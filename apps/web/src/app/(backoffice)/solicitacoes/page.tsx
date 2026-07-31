@@ -1,6 +1,7 @@
 "use client";
 
 import type { ListRequestsResult } from "@saude-bliss/contracts";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { RequestsFilters } from "~/components/pages/RequestsFilters";
@@ -61,7 +62,16 @@ function SolicitacoesContent() {
 						{result ? `${result.pagination.total} solicitação(ões)` : "…"}
 					</p>
 				</div>
-				<RequestIdBadge requestId={requestId} />
+				<div className="flex items-center gap-4">
+					<RequestIdBadge requestId={requestId} />
+					<Link
+						href="/solicitacoes/nova"
+						className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+						data-testid="nova-solicitacao"
+					>
+						Nova solicitação
+					</Link>
+				</div>
 			</div>
 
 			<RequestsFilters />

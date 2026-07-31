@@ -10,4 +10,5 @@
 export * from "./auth.schema";
 export * from "./enums";
 export * from "./envelope";
+export * from "./health.schema";
 export * from "./request.schema";

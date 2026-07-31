@@ -9,6 +9,7 @@
  * serviços é um healthcheck que nenhum orquestrador consegue consumir.
  */
 
+import { HealthDataSchema } from "@saude-bliss/contracts";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { envService } from "../config/EnvService";
@@ -17,15 +18,6 @@ import { blissFail, blissSuccess, buildErrorResponseSchema } from "../utils/resp
 
 /** Verificação de dependência. Deve lançar ou devolver `false` quando indisponível. */
 export type HealthProbe = () => Promise<boolean>;
-
-export const HealthDataSchema = z.object({
-	service: z.string(),
-	status: z.enum(["ok", "degraded"]),
-	env: z.string(),
-	dependencies: z.enum(["up", "down"]),
-	uptimeSeconds: z.number(),
-	version: z.string(),
-});
 
 export const HealthResponseSchema = z.object({
 	success: z.literal(true),

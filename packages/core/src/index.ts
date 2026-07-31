@@ -27,7 +27,7 @@ export {
 export { createAggregatedApp, type CreateAggregatedAppOptions } from "./app/createAggregatedApp";
 export { applyPlatform, createApp, type CreateAppOptions } from "./app/createApp";
 export { defineService, serviceTag, type ServiceDefinition } from "./app/defineService";
-export { HealthDataSchema, HealthResponseSchema, registerHealthRoute, type HealthProbe } from "./app/healthRoute";
+export { HealthResponseSchema, registerHealthRoute, type HealthProbe } from "./app/healthRoute";
 export { createLambdaHandler } from "./app/lambda";
 export { describeRoutes, type DomainRouter, type RouteDescriptor, type RouterOptions } from "./app/router";
 export { runLocal, type RunLocalOptions } from "./app/runLocal";

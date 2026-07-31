@@ -8,6 +8,7 @@ import { useSession } from "~/providers/SessionProvider";
 const NAV = [
 	{ href: "/solicitacoes", label: "Solicitações" },
 	{ href: "/conferencia", label: "Conferência" },
+	{ href: "/status", label: "Status" },
 ];
 
 /**

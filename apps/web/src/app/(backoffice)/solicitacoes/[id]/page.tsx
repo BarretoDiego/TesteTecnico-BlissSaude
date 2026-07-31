@@ -15,6 +15,8 @@ export default function SolicitacaoDetalhePage({ params }: { params: Promise<{ i
 	const { id } = use(params);
 	const [detail, setDetail] = useState<RequestDetail | null>(null);
 	const [error, setError] = useState<{ message: string; notFound: boolean; requestId?: string } | null>(null);
+	const [refreshingTimeline, setRefreshingTimeline] = useState(false);
+	const [timelineError, setTimelineError] = useState<string | null>(null);
 
 	useEffect(() => {
 		RequestsService.getById(id)
@@ -28,6 +30,26 @@ export default function SolicitacaoDetalhePage({ params }: { params: Promise<{ i
 				});
 			});
 	}, [id]);
+
+	/**
+	 * Recarrega apenas a trilha, por `GET /reviews/{id}/timeline`.
+	 *
+	 * Outro microserviço de propósito: a trilha pertence ao domínio de conferência,
+	 * e é `bliss-reviews` quem a escreve. Depois que alguém confere a solicitação
+	 * noutra aba, é esta chamada que traz o evento novo sem recarregar a página.
+	 */
+	async function refreshTimeline() {
+		setRefreshingTimeline(true);
+		setTimelineError(null);
+
+		try {
+			setDetail(await RequestsService.timeline(id));
+		} catch (caught) {
+			setTimelineError(caught instanceof ApiError ? caught.message : "Falha ao recarregar a trilha");
+		} finally {
+			setRefreshingTimeline(false);
+		}
+	}
 
 	if (error) {
 		return (
@@ -89,8 +111,30 @@ export default function SolicitacaoDetalhePage({ params }: { params: Promise<{ i
 			</div>
 
 			<section className="rounded-lg border border-slate-200 bg-white p-6">
-				<h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trilha de auditoria</h2>
-				<ol className="mt-4 space-y-3" data-testid="detail-timeline">
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trilha de auditoria</h2>
+					<button
+						onClick={() => void refreshTimeline()}
+						disabled={refreshingTimeline}
+						className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+						data-testid="detail-refresh-timeline"
+						title="GET /reviews/{id}/timeline"
+					>
+						{refreshingTimeline ? "Recarregando…" : "Recarregar trilha"}
+					</button>
+				</div>
+
+				{timelineError && (
+					<p
+						className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700"
+						role="alert"
+						data-testid="timeline-error"
+					>
+						{timelineError}
+					</p>
+				)}
+
+				<ol className="mt-4 space-y-3" data-testid="detail-timeline" data-count={detail.events.length}>
 					{detail.events.map((event) => (
 						<li key={event.id} className="flex flex-wrap items-center gap-3 text-sm" data-testid="timeline-event">
 							<span className="font-medium">{event.type}</span>

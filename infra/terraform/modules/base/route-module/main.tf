@@ -42,6 +42,37 @@ locals {
       aws_api_gateway_resource.level2["${route.segments[0]}/${route.segments[1]}"].id
     )
   }
+
+  # ---------------------------------------------------------------------------
+  # Preflight
+  #
+  # O `OPTIONS` é por **recurso**, não por rota: o browser dispara um preflight
+  # por caminho, não por método. Gerá-lo automaticamente — em vez de exigir uma
+  # linha no mapa de rotas — fecha a única forma de esquecê-lo, que é adicionar
+  # uma rota nova e só descobrir o problema quando o front chama de outra origem.
+  # ---------------------------------------------------------------------------
+
+  # Caminho relativo ao domínio => segmentos, para declarar os parâmetros de rota.
+  preflight_paths = merge(
+    { "" = [] },
+    { for segment in local.level1 : segment => [segment] },
+    { for key, node in local.level2 : key => [node.parent, node.part] },
+  )
+
+  # Um `OPTIONS` declarado à mão no mapa vence: criar o automático em cima dele
+  # seria método duplicado no mesmo recurso, que o plano rejeita.
+  explicit_options = [for route in local.parsed : join("/", route.segments) if route.method == "OPTIONS"]
+
+  preflight = {
+    for path, segments in local.preflight_paths : path => segments
+    if !contains(local.explicit_options, path)
+  }
+
+  preflight_resource_id = merge(
+    { "" = var.domain_resource_id },
+    { for segment in local.level1 : segment => aws_api_gateway_resource.level1[segment].id },
+    { for key, node in local.level2 : key => aws_api_gateway_resource.level2[key].id },
+  )
 }
 
 resource "aws_api_gateway_resource" "level1" {
@@ -111,7 +142,49 @@ resource "aws_lambda_permission" "apigw" {
   source_arn    = "arn:aws:execute-api:${var.region}:${var.account_id}:${var.rest_api_id}/*/*"
 }
 
-# CORS não é declarado aqui de propósito: sob `AWS_PROXY` o API Gateway repassa a
-# requisição inteira e os `method_response`/`integration_response` com headers
-# fixos — que o módulo da casa cria — são ignorados. Quem responde CORS, inclusive
-# o preflight `OPTIONS`, é o `@fastify/cors` dentro da aplicação.
+# -----------------------------------------------------------------------------
+# CORS
+#
+# Os headers não são declarados aqui de propósito: sob `AWS_PROXY` o API Gateway
+# repassa a requisição inteira, e os `method_response`/`integration_response` com
+# headers fixos — que o módulo da casa cria — são ignorados. Quem responde CORS é
+# o `@fastify/cors` dentro da aplicação.
+#
+# Mas o gateway ainda precisa **rotear** o `OPTIONS` até lá. Sem estes métodos, o
+# preflight morre na borda com 403 (`Missing Authentication Token`) e toda chamada
+# cross-origin do backoffice falha — inclusive as que funcionariam, já que o
+# interceptor sempre envia `x-request-id` e um header customizado é justamente o
+# que obriga o browser a fazer preflight.
+# -----------------------------------------------------------------------------
+
+resource "aws_api_gateway_method" "preflight" {
+  for_each = local.preflight
+
+  rest_api_id = var.rest_api_id
+  resource_id = local.preflight_resource_id[each.key]
+  http_method = "OPTIONS"
+
+  # `NONE` obrigatoriamente: o browser não envia `Authorization` nem cookies no
+  # preflight. Exigir autorização aqui reprovaria o preflight de toda rota
+  # autenticada — o oposto do efeito pretendido.
+  authorization    = "NONE"
+  api_key_required = false
+
+  request_parameters = {
+    for segment in each.value :
+    "method.request.path.${trim(segment, "{}")}" => true
+    if startswith(segment, "{")
+  }
+}
+
+resource "aws_api_gateway_integration" "preflight" {
+  for_each = aws_api_gateway_method.preflight
+
+  rest_api_id = var.rest_api_id
+  resource_id = each.value.resource_id
+  http_method = each.value.http_method
+
+  type                    = "AWS_PROXY"
+  integration_http_method = "POST"
+  uri                     = var.lambda_invoke_arn
+}
