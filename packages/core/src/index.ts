@@ -14,6 +14,16 @@
  */
 
 // Aplicação
+export {
+	allow,
+	buildResourceArn,
+	createAuthorizerHandler,
+	deny,
+	type AuthorizedPrincipal,
+	type AuthorizerEvent,
+	type PolicyDocument,
+	type TokenVerifier,
+} from "./app/authorizer";
 export { createAggregatedApp, type CreateAggregatedAppOptions } from "./app/createAggregatedApp";
 export { applyPlatform, createApp, type CreateAppOptions } from "./app/createApp";
 export { defineService, serviceTag, type ServiceDefinition } from "./app/defineService";

@@ -24,3 +24,16 @@ db_pool_max          = 1
 # exercitar o RDS emulado de verdade.
 create_rds_instance = false
 rds_fallback_host   = "postgres"
+
+# -----------------------------------------------------------------------------
+# Autorização
+# -----------------------------------------------------------------------------
+enable_authorizer = true
+
+# Chave de desenvolvimento — fixa de propósito, para que o token emitido por
+# `pnpm token` valide contra o que foi implantado. Em dev/stage/prod vem de
+# TF_VAR_jwt_signing_key, nunca versionada.
+jwt_signing_key = "chave-de-desenvolvimento-local-nao-usar-em-producao"
+
+# TTL curto em local: facilita observar o authorizer sendo invocado de novo.
+authorizer_cache_ttl = 60

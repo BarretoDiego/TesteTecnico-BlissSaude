@@ -15,18 +15,29 @@ output "api_id" { value = aws_api_gateway_rest_api.this.id }
 output "service_urls" {
   description = "URL de cada microserviço, sob o prefixo do seu domínio."
   value = {
-    for key, service in local.services :
-    key => "${local.invoke_url}${var.api_prefix}/${service.route_prefix}"
+    bliss-requests = "${local.invoke_url}${var.api_prefix}/${module.bliss_requests.route_prefix}"
+    bliss-reviews  = "${local.invoke_url}${var.api_prefix}/${module.bliss_reviews.route_prefix}"
   }
 }
 
+output "authorizer_enabled" { value = var.enable_authorizer }
+output "jwt_secret_id" { value = module.bliss_authorizer.jwt_secret_id }
+
 output "lambda_functions" {
-  value = { for key in keys(local.services) : key => module.lambda[key].function_name }
+  value = {
+    bliss-requests   = module.bliss_requests.function_name
+    bliss-reviews    = module.bliss_reviews.function_name
+    bliss-authorizer = module.bliss_authorizer.function_name
+  }
 }
 
 output "log_groups" {
   description = "Grupos de log para consulta no CloudWatch Logs Insights."
-  value       = { for key in keys(local.services) : key => module.lambda[key].log_group_name }
+  value = {
+    bliss-requests   = module.bliss_requests.log_group_name
+    bliss-reviews    = module.bliss_reviews.log_group_name
+    bliss-authorizer = module.bliss_authorizer.log_group_name
+  }
 }
 
 output "database_secret_id" { value = module.database.secret_id }

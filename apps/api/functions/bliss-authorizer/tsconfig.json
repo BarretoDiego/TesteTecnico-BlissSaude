@@ -1,0 +1,15 @@
+{
+	"extends": "../../../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"baseUrl": ".",
+		"isolatedModules": true,
+		"paths": {
+			"@saude-bliss/contracts": ["../../../../packages/contracts/src/index.ts"],
+			"@saude-bliss/core": ["../../../../packages/core/src/index.ts"]
+		},
+		"types": ["node", "jest"]
+	},
+	"include": ["src/**/*.ts", "__tests__/**/*.ts", "scripts/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}

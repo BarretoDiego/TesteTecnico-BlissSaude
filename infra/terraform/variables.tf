@@ -111,3 +111,37 @@ variable "rds_host_accessible_port" {
   type    = number
   default = 5433
 }
+
+# -----------------------------------------------------------------------------
+# Autorização
+# -----------------------------------------------------------------------------
+
+variable "enable_authorizer" {
+  type        = bool
+  default     = true
+  description = <<-EOT
+    Aplica o authorizer às rotas de domínio.
+
+    Com `false` a API fica aberta — útil para isolar um problema de aplicação sem
+    o authorizer no caminho. As rotas `/health` continuam públicas nos dois casos.
+  EOT
+}
+
+variable "jwt_signing_key" {
+  type      = string
+  sensitive = true
+  default   = "chave-de-desenvolvimento-trocar-em-producao"
+
+  validation {
+    # HS256 com chave curta é quebrável por força bruta. 32 bytes é o mínimo
+    # recomendado para o tamanho do digest.
+    condition     = length(var.jwt_signing_key) >= 32
+    error_message = "A chave de assinatura deve ter ao menos 32 caracteres."
+  }
+}
+
+variable "authorizer_cache_ttl" {
+  type        = number
+  default     = 300
+  description = "Segundos de cache da política por token. Ver o módulo do authorizer."
+}

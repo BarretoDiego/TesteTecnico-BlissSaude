@@ -4,7 +4,10 @@
 # Terraform é a **única** coisa que cria ou muda recurso. O Serverless Framework
 # é emulador local e packager — ver docs/adr/0002.
 #
-# Um serviço novo entra em `local.services` e nada mais precisa mudar aqui.
+# Este arquivo cria só o que é **compartilhado**: a API, o recurso de versão, o
+# banco e o stage. Lambda e rotas de cada microserviço ficam no módulo dele, em
+# `modules/services/<serviço>/` — um domínio novo é um módulo novo e uma linha
+# aqui, sem tocar em configuração alheia.
 # =============================================================================
 
 # Resolve a conta em uso. No LocalStack devolve a conta fictícia padrão; em AWS
@@ -12,17 +15,11 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  name = "${var.project_name}-${var.env_suffix}"
+  name          = "${var.project_name}-${var.env_suffix}"
+  functions_dir = "${path.module}/../../apps/api/functions"
 
-  # Registro dos microserviços. O `route_prefix` casa com o `ROUTE_PREFIX` do
-  # router de cada um — a paridade é verificada por `pnpm check:routes`.
-  services = {
-    bliss-requests = { route_prefix = "requests" }
-    bliss-reviews  = { route_prefix = "reviews" }
-  }
-
-  # Variáveis de ambiente comuns. A credencial do banco **não** está aqui: só o
-  # id do segredo, que a função resolve em runtime.
+  # Variáveis de ambiente comuns a todos os serviços. A credencial do banco
+  # **não** está aqui: só o id do segredo, que a função resolve em runtime.
   common_environment = {
     BLISS_ENV    = var.env_suffix
     LOG_LEVEL    = var.log_level
@@ -50,26 +47,6 @@ module "database" {
   host_accessible_port = var.rds_host_accessible_port
 }
 
-module "lambda" {
-  source   = "./modules/base/lambda-module"
-  for_each = local.services
-
-  project_name           = var.project_name
-  env_suffix             = var.env_suffix
-  service_name           = each.key
-  lambda_package_file    = "${path.module}/../../apps/api/functions/${each.key}/dist/function.zip"
-  runtime                = var.lambda_runtime
-  memory_size            = var.lambda_memory_size
-  timeout                = var.lambda_timeout
-  reserved_concurrency   = var.reserved_concurrency
-  logs_retention_in_days = var.logs_retention_in_days
-  secret_arn             = module.database.secret_arn
-
-  environment_variables = merge(local.common_environment, {
-    SERVICE_NAME = each.key
-  })
-}
-
 resource "aws_api_gateway_rest_api" "this" {
   name        = local.name
   description = "Saúde Bliss — gestão de solicitações (${var.env_suffix})"
@@ -86,20 +63,6 @@ resource "aws_api_gateway_resource" "version" {
   path_part   = trimprefix(var.api_prefix, "/")
 }
 
-module "routing" {
-  source   = "./modules/base/apigw-service"
-  for_each = local.services
-
-  rest_api_id          = aws_api_gateway_rest_api.this.id
-  root_resource_id     = aws_api_gateway_resource.version.id
-  route_prefix         = each.value.route_prefix
-  lambda_invoke_arn    = module.lambda[each.key].invoke_arn
-  lambda_function_name = module.lambda[each.key].function_name
-  region               = var.region
-  account_id           = data.aws_caller_identity.current.account_id
-  use_localstack       = var.use_localstack
-}
-
 resource "aws_api_gateway_deployment" "this" {
   rest_api_id = aws_api_gateway_rest_api.this.id
 
@@ -109,8 +72,13 @@ resource "aws_api_gateway_deployment" "this" {
   triggers = {
     redeploy = sha1(jsonencode([
       aws_api_gateway_resource.version.id,
-      [for key in keys(local.services) : module.routing[key].resource_ids],
-      [for key in keys(local.services) : module.routing[key].integration_ids],
+      module.bliss_requests.resource_ids,
+      module.bliss_requests.integration_ids,
+      module.bliss_reviews.resource_ids,
+      module.bliss_reviews.integration_ids,
+      # O authorizer entra no hash: trocá-lo muda a autorização dos métodos e
+      # exige redeploy do stage para valer.
+      var.enable_authorizer ? module.bliss_authorizer.authorizer_id : "sem-authorizer",
     ]))
   }
 
@@ -118,7 +86,7 @@ resource "aws_api_gateway_deployment" "this" {
     create_before_destroy = true
   }
 
-  depends_on = [module.routing]
+  depends_on = [module.bliss_requests, module.bliss_reviews]
 }
 
 # Stage separado do deployment: o argumento `stage_name` embutido no
@@ -158,4 +126,63 @@ resource "aws_cloudwatch_log_group" "api_access" {
 
   name              = "/aws/apigateway/${local.name}"
   retention_in_days = var.logs_retention_in_days
+}
+
+# -----------------------------------------------------------------------------
+# Microserviços
+#
+# O authorizer vem primeiro: os módulos de domínio recebem o id dele e aplicam
+# `authorization = CUSTOM` aos próprios métodos.
+# -----------------------------------------------------------------------------
+
+module "bliss_authorizer" {
+  source = "./modules/services/bliss-authorizer"
+
+  project_name           = var.project_name
+  env_suffix             = var.env_suffix
+  region                 = var.region
+  use_localstack         = var.use_localstack
+  rest_api_id            = aws_api_gateway_rest_api.this.id
+  package_dir            = "${local.functions_dir}/bliss-authorizer"
+  lambda_runtime         = var.lambda_runtime
+  logs_retention_in_days = var.logs_retention_in_days
+  environment_variables  = local.common_environment
+  jwt_signing_key        = var.jwt_signing_key
+  result_ttl_in_seconds  = var.authorizer_cache_ttl
+}
+
+module "bliss_requests" {
+  source = "./modules/services/bliss-requests"
+
+  project_name           = var.project_name
+  env_suffix             = var.env_suffix
+  region                 = var.region
+  account_id             = data.aws_caller_identity.current.account_id
+  use_localstack         = var.use_localstack
+  rest_api_id            = aws_api_gateway_rest_api.this.id
+  root_resource_id       = aws_api_gateway_resource.version.id
+  authorizer_id          = var.enable_authorizer ? module.bliss_authorizer.authorizer_id : ""
+  package_dir            = "${local.functions_dir}/bliss-requests"
+  lambda_runtime         = var.lambda_runtime
+  logs_retention_in_days = var.logs_retention_in_days
+  environment_variables  = local.common_environment
+  secret_arn             = module.database.secret_arn
+}
+
+module "bliss_reviews" {
+  source = "./modules/services/bliss-reviews"
+
+  project_name           = var.project_name
+  env_suffix             = var.env_suffix
+  region                 = var.region
+  account_id             = data.aws_caller_identity.current.account_id
+  use_localstack         = var.use_localstack
+  rest_api_id            = aws_api_gateway_rest_api.this.id
+  root_resource_id       = aws_api_gateway_resource.version.id
+  authorizer_id          = var.enable_authorizer ? module.bliss_authorizer.authorizer_id : ""
+  package_dir            = "${local.functions_dir}/bliss-reviews"
+  lambda_runtime         = var.lambda_runtime
+  logs_retention_in_days = var.logs_retention_in_days
+  environment_variables  = local.common_environment
+  secret_arn             = module.database.secret_arn
 }

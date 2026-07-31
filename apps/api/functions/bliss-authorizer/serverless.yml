@@ -1,0 +1,40 @@
+# =============================================================================
+# bliss-authorizer — Serverless Framework
+#
+# Diferente dos demais serviços, este não declara eventos `http`: ele não atende
+# rota nenhuma. É invocado pelo API Gateway antes de encaminhar a requisição, e
+# a associação com os métodos protegidos é feita no Terraform
+# (`aws_api_gateway_authorizer` + `authorization = "CUSTOM"`).
+#
+# O arquivo existe para manter a simetria de configuração entre os serviços e
+# para permitir `sls package` neste também.
+# =============================================================================
+
+service: bliss-authorizer
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${env:AWS_REGION, 'us-east-1'}
+  stage: ${opt:stage, 'local'}
+  memorySize: 256 # não toca banco; só valida assinatura
+  timeout: 10
+  logRetentionInDays: 7
+  environment:
+    BLISS_ENV: ${self:provider.stage}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'info'}
+    SERVICE_NAME: bliss-authorizer
+    JWT_SECRET: ${env:JWT_SECRET, ''}
+    JWT_SECRET_ID: ${env:JWT_SECRET_ID, ''}
+    JWT_ISSUER: ${env:JWT_ISSUER, 'saude-bliss'}
+    JWT_AUDIENCE: ${env:JWT_AUDIENCE, 'saude-bliss-api'}
+    AWS_ENDPOINT_URL: ${env:AWS_ENDPOINT_URL, ''}
+
+package:
+  artifact: dist/function.zip
+
+functions:
+  authorizer:
+    handler: app.lambdaHandler
+    description: Authorizer do API Gateway — valida o token e autoriza as demais Lambdas
