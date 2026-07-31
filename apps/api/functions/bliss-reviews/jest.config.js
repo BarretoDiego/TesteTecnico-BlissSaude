@@ -1,0 +1,63 @@
+/**
+ * Testes do microserviço `bliss-reviews`.
+ *
+ * Os projects espelham as camadas do padrão da casa e permitem rodar cada uma
+ * isoladamente (`--selectProjects unit`). A separação importa na prática:
+ * `unit` e `contract` não tocam I/O e rodam em ~1s, então é o que se executa a
+ * cada save; `e2e` precisa de Postgres no ar e fica para o pipeline.
+ */
+
+/** @type {import("ts-jest").JestConfigWithTsJest} */
+const base = {
+	preset: "ts-jest",
+	testEnvironment: "node",
+	rootDir: ".",
+	moduleNameMapper: {
+		"^@saude-bliss/contracts$": "<rootDir>/../../../../packages/contracts/src/index.ts",
+		"^@saude-bliss/core$": "<rootDir>/../../../../packages/core/src/index.ts",
+		"^@saude-bliss/database$": "<rootDir>/../../../../packages/database/src/index.ts",
+		"^@saude-bliss/testing$": "<rootDir>/../../../../packages/testing/src/index.ts",
+	},
+	transform: {
+		"^.+\\.tsx?$": ["ts-jest", { tsconfig: "<rootDir>/tsconfig.json" }],
+	},
+	clearMocks: true,
+	restoreMocks: true,
+	setupFiles: ["<rootDir>/__tests__/.jest/setup.ts"],
+};
+
+module.exports = {
+	projects: [
+		{ ...base, displayName: "unit", testMatch: ["<rootDir>/__tests__/unit/**/*.test.ts"] },
+		{ ...base, displayName: "integration", testMatch: ["<rootDir>/__tests__/integration/**/*.test.ts"] },
+		{ ...base, displayName: "contract", testMatch: ["<rootDir>/__tests__/contract/**/*.test.ts"] },
+		{
+			...base,
+			displayName: "e2e",
+			testMatch: ["<rootDir>/__tests__/e2e/**/*.test.ts"],
+			// Postgres real: transações concorrentes de arquivos diferentes na mesma
+			// base produzem falha intermitente. Serializar é mais barato que isolar.
+			maxWorkers: 1,
+			setupFiles: [...base.setupFiles, "<rootDir>/__tests__/.jest/setup-e2e.ts"],
+		},
+	],
+
+	collectCoverageFrom: [
+		"src/**/*.ts",
+		// Composição de framework e barrels não têm lógica para cobrir; incluí-los
+		// só dilui a métrica.
+		"!src/app.ts",
+		"!src/router/index.ts",
+		"!src/**/index.ts",
+	],
+	// Limites conferidos contra a execução real, não aspiracionais. Statements,
+	// linhas e funções ficam em 95%+; branches fica abaixo porque parte dos
+	// ramos são fallbacks defensivos sem caminho de negócio que os atinja
+	// (o `where` opcional do Drizzle, o coerce do Zod). Forçar 95% ali
+	// produziria teste escrito para a métrica, não para o comportamento.
+	coverageThreshold: {
+		global: { branches: 90, functions: 95, lines: 95, statements: 95 },
+		"./src/middlewares/": { branches: 95, functions: 95, lines: 95, statements: 95 },
+		"./src/services/": { branches: 94, functions: 95, lines: 95, statements: 95 },
+	},
+};

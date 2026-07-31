@@ -1,5 +1,14 @@
 {
 	"extends": "../../tsconfig.base.json",
-	"compilerOptions": { "rootDir": "./src", "noEmit": true, "types": ["node"] },
-	"include": ["src/**/*.ts"]
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["node", "jest"],
+		"paths": {
+			"@saude-bliss/contracts": ["../contracts/src/index.ts"],
+			"@saude-bliss/testing": ["../testing/src/index.ts"]
+		},
+		"baseUrl": ".",
+		"isolatedModules": true
+	},
+	"include": ["src/**/*.ts", "__tests__/**/*.ts"]
 }
