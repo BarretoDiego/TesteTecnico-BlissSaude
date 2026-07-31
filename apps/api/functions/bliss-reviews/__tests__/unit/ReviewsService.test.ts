@@ -121,6 +121,23 @@ describe("ReviewsService.review — recusas", () => {
 		expect(repository.updateStatus).not.toHaveBeenCalled();
 	});
 
+	it("lança INVALID_STATUS_TRANSITION para um destino não permitido", async () => {
+		const repository = makeRepository({
+			findById: jest.fn().mockResolvedValue(makeRequest({ status: "in_review" })),
+		});
+
+		// `in_review → in_review` não está na tabela de transições. Hoje o schema
+		// da rota só admite `reviewed` e `rejected`, então este ramo é inalcançável
+		// pela API — a entrada é forçada de propósito. A guarda existe para o dia
+		// em que um status novo entrar no enum e ninguém revisitar as transições.
+		const payload = { ...makeReviewPayload(), status: "in_review" } as never;
+
+		await expect(new ReviewsService(repository).review(makeUuid(), payload)).rejects.toMatchObject({
+			code: "INVALID_STATUS_TRANSITION",
+		});
+		expect(repository.updateStatus).not.toHaveBeenCalled();
+	});
+
 	it("lança REQUEST_ALREADY_REVIEWED quando outro conferente vence a corrida", async () => {
 		// `updateStatus` devolve null quando o compare-and-set não encontra a linha
 		// no status esperado — é a corrida entre duas pessoas conferindo a mesma
@@ -174,5 +191,33 @@ describe("fronteira de domínio", () => {
 
 		expect(service).not.toHaveProperty("create");
 		expect(service).not.toHaveProperty("list");
+	});
+});
+
+/**
+ * Definição do microserviço.
+ *
+ * O `service.ts` existe para que `app.ts` (a Lambda) e `run.all.local.ts` (todos
+ * os domínios num processo) leiam a **mesma** definição. Quando nome e prefixo
+ * estavam declarados nos dois lugares, podiam divergir sem ninguém notar — e o
+ * sintoma aparecia só no deploy, como 403 do API Gateway.
+ */
+describe("definição do serviço", () => {
+	it("declara nome e prefixo coerentes com o router", async () => {
+		const { service, ROUTE_PREFIX } = await import("../../src/service");
+		const { ROUTE_PREFIX: doRouter } = await import("../../src/router");
+
+		expect(service.name).toBe("bliss-reviews");
+		expect(service.routePrefix).toBe("/reviews");
+		// O prefixo reexportado precisa ser o do router, não uma cópia.
+		expect(ROUTE_PREFIX).toBe(doRouter);
+	});
+
+	it("expõe uma sonda de saúde", () => {
+		// Sem sonda o `/health` responderia "ok" por estar de pé, mesmo com o banco
+		// fora — e o healthcheck viraria enfeite.
+		return import("../../src/service").then(({ service }) => {
+			expect(typeof service.healthProbe).toBe("function");
+		});
 	});
 });

@@ -97,6 +97,16 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
+      # O runner do Ubuntu não traz Terraform — sem esta etapa o passo de
+      # validação morre com `terraform: command not found`.
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          # O wrapper troca o binário por um script que captura stdout para os
+          # outputs da action. Aqui os comandos rodam direto, e o wrapper só
+          # atrapalha a propagação do código de saída de `fmt -check`.
+          terraform_wrapper: false
+
       - run: pnpm install --frozen-lockfile
 
       # O build carrega o bundle e confere que ele exporta `lambdaHandler`. Um

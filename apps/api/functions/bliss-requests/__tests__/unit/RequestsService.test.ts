@@ -130,3 +130,31 @@ describe("fronteira de domínio", () => {
 		expect(new RequestsService(makeRepository())).not.toHaveProperty("review");
 	});
 });
+
+/**
+ * Definição do microserviço.
+ *
+ * O `service.ts` existe para que `app.ts` (a Lambda) e `run.all.local.ts` (todos
+ * os domínios num processo) leiam a **mesma** definição. Quando nome e prefixo
+ * estavam declarados nos dois lugares, podiam divergir sem ninguém notar — e o
+ * sintoma aparecia só no deploy, como 403 do API Gateway.
+ */
+describe("definição do serviço", () => {
+	it("declara nome e prefixo coerentes com o router", async () => {
+		const { service, ROUTE_PREFIX } = await import("../../src/service");
+		const { ROUTE_PREFIX: doRouter } = await import("../../src/router");
+
+		expect(service.name).toBe("bliss-requests");
+		expect(service.routePrefix).toBe("/requests");
+		// O prefixo reexportado precisa ser o do router, não uma cópia.
+		expect(ROUTE_PREFIX).toBe(doRouter);
+	});
+
+	it("expõe uma sonda de saúde", async () => {
+		const { service } = await import("../../src/service");
+
+		// Sem sonda o `/health` responderia "ok" por estar de pé, mesmo com o banco
+		// fora — e o healthcheck viraria enfeite.
+		expect(typeof service.healthProbe).toBe("function");
+	});
+});

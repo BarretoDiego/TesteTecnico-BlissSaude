@@ -102,7 +102,12 @@ export class PasswordService {
 			return false;
 		}
 
-		const derived = await scrypt(password, parsed.salt, parsed.derived.length, {
+		// `KEY_LENGTH` constante, e **não** `parsed.derived.length`: derivar no
+		// tamanho que veio do hash armazenado deixa quem controla a linha do banco
+		// escolher quantos bytes precisam bater. Um hash truncado para poucos bytes
+		// passaria a verificar com probabilidade alta, e a checagem de tamanho
+		// abaixo nunca dispararia — os dois lados encolheriam juntos.
+		const derived = await scrypt(password, parsed.salt, KEY_LENGTH, {
 			...parsed.params,
 			maxmem: maxmemFor(parsed.params),
 		});

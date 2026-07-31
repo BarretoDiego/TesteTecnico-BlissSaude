@@ -12,6 +12,82 @@ import { BlissError } from "../../../src/errors/BlissError";
 import { ERROR_CATALOG } from "../../../src/errors/catalog";
 import { DefaultErroHandler } from "../../../src/errors/DefaultErroHandler";
 
+describe("DefaultErroHandler — validação do Fastify", () => {
+	/**
+	 * Forma do erro que o Ajv produz no estágio `preValidation` — antes de
+	 * qualquer middleware. Sem reconhecê-lo, toda rota com schema declarado
+	 * devolvia **500** para entrada inválida do cliente.
+	 */
+	const fastifyError = (validation: Array<{ instancePath?: string; message?: string }>, validationContext?: string) =>
+		({ validation, ...(validationContext ? { validationContext } : {}) }) as unknown;
+
+	it("responde 400, e não 500", () => {
+		const reply = makeReply();
+
+		DefaultErroHandler(
+			fastifyError([{ instancePath: "/status", message: "deve ser um dos valores permitidos" }], "querystring"),
+			reply.reply,
+			makeFastifyRequest()
+		);
+
+		expect(reply.statusCode).toBe(400);
+		expect(reply.payload.error.code).toBe("VALIDATION_ERROR");
+	});
+
+	it("compõe o contexto com o caminho para nomear o campo", () => {
+		const reply = makeReply();
+
+		DefaultErroHandler(
+			fastifyError([{ instancePath: "/status", message: "inválido" }], "querystring"),
+			reply.reply,
+			makeFastifyRequest()
+		);
+
+		// "querystring.status" é acionável; "/status" sozinho não diz de onde veio.
+		expect(reply.payload.error.details).toEqual([{ field: "querystring.status", message: "inválido" }]);
+	});
+
+	it("achata caminhos aninhados com ponto", () => {
+		const reply = makeReply();
+
+		DefaultErroHandler(
+			fastifyError([{ instancePath: "/filtro/status", message: "inválido" }], "body"),
+			reply.reply,
+			makeFastifyRequest()
+		);
+
+		expect(reply.payload.error.details).toEqual([{ field: "body.filtro.status", message: "inválido" }]);
+	});
+
+	it("usa (raiz) quando não há caminho nem contexto", () => {
+		const reply = makeReply();
+
+		// Acontece quando o corpo inteiro é do tipo errado — um array onde se
+		// esperava objeto. Campo vazio na resposta não ajudaria ninguém.
+		DefaultErroHandler(fastifyError([{ message: "deve ser objeto" }]), reply.reply, makeFastifyRequest());
+
+		expect(reply.payload.error.details).toEqual([{ field: "(raiz)", message: "deve ser objeto" }]);
+	});
+
+	it("preenche mensagem padrão quando o Ajv não fornece uma", () => {
+		const reply = makeReply();
+
+		DefaultErroHandler(fastifyError([{ instancePath: "/x" }], "body"), reply.reply, makeFastifyRequest());
+
+		expect(reply.payload.error.details).toEqual([{ field: "body.x", message: "valor inválido" }]);
+	});
+
+	it("não confunde objeto cujo `validation` não é lista", () => {
+		const reply = makeReply();
+
+		// A checagem é `Array.isArray`, e não a mera presença da chave: um erro
+		// qualquer com `validation: "algo"` cairia no ramo errado.
+		DefaultErroHandler({ validation: "não é lista" }, reply.reply, makeFastifyRequest());
+
+		expect(reply.statusCode).toBe(500);
+	});
+});
+
 describe("DefaultErroHandler — erro de validação", () => {
 	function makeZodError(): z.ZodError {
 		const schema = z.object({ title: z.string().min(3, "Título muito curto"), age: z.number() });

@@ -129,3 +129,60 @@ describe("BlissLogger", () => {
 		spy.mockRestore();
 	});
 });
+
+/**
+ * Nível padrão, quando o construtor não recebe um.
+ *
+ * `resolveDefaultLevel` roda como valor padrão do parâmetro, então lê o ambiente
+ * a cada construção. O que se verifica é comportamento — qual linha sai — e não
+ * o valor interno, que é privado de propósito.
+ */
+describe("BlissLogger — nível padrão", () => {
+	const ORIGINAL = { ...process.env };
+
+	afterEach(() => {
+		process.env = { ...ORIGINAL };
+	});
+
+	/** `true` se uma chamada nesse nível chega ao console. */
+	function emite(level: "debug" | "info"): boolean {
+		const spy = jest.spyOn(console, "log").mockImplementation(() => {});
+		new BlissLogger().log(level, "Mod", "act", "msg");
+		const chamou = spy.mock.calls.length > 0;
+		spy.mockRestore();
+		return chamou;
+	}
+
+	it("respeita LOG_LEVEL quando é um nível conhecido", () => {
+		process.env.LOG_LEVEL = "info";
+
+		expect(emite("debug")).toBe(false);
+		expect(emite("info")).toBe(true);
+	});
+
+	it("ignora LOG_LEVEL desconhecido em vez de quebrar", () => {
+		process.env.LOG_LEVEL = "verboso-demais";
+		process.env.BLISS_ENV = "local";
+
+		// Valor inválido não pode derrubar a inicialização: o logger precisa
+		// existir antes de qualquer coisa que saberia reportar o erro.
+		expect(emite("debug")).toBe(true);
+	});
+
+	it("usa debug em ambiente local", () => {
+		delete process.env.LOG_LEVEL;
+		process.env.BLISS_ENV = "local";
+
+		expect(emite("debug")).toBe(true);
+	});
+
+	it("usa info fora de ambiente local", () => {
+		delete process.env.LOG_LEVEL;
+		process.env.BLISS_ENV = "prod";
+
+		// `debug` em produção multiplicaria o volume — e o custo — do CloudWatch
+		// sem que ninguém tivesse pedido.
+		expect(emite("debug")).toBe(false);
+		expect(emite("info")).toBe(true);
+	});
+});

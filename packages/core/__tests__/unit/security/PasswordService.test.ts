@@ -66,4 +66,15 @@ describe("PasswordService", () => {
 
 		await expect(service.verify("", hash)).resolves.toBe(false);
 	});
+
+	it("recusa hash com derivação de tamanho divergente", async () => {
+		const hash = await service.hash("senha-real");
+		const [esquema, n, r, p, salt, derived] = hash.split("$");
+		const truncado = [esquema, n, r, p, salt, derived!.slice(0, 20)].join("$");
+
+		// `timingSafeEqual` **lança** quando os buffers têm tamanhos diferentes.
+		// Sem a checagem de tamanho antes, um hash truncado no banco derrubaria o
+		// login com exceção em vez de recusar a credencial.
+		await expect(service.verify("senha-real", truncado)).resolves.toBe(false);
+	});
 });

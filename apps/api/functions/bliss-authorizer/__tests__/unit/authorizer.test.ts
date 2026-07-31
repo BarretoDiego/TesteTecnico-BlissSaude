@@ -190,3 +190,95 @@ describe("TokenService — configuração ausente", () => {
 		await expect(service.verify("qualquer.coisa.aqui")).rejects.toThrow(/JWT_SECRET/);
 	});
 });
+
+describe("authorize — claims incompletas", () => {
+	it("resolve o contexto quando o token não traz e-mail nem papéis", async () => {
+		// O API Gateway descarta valor `undefined` do contexto em silêncio, e a
+		// Lambda de domínio receberia campo ausente sem nenhum aviso. Os defaults
+		// garantem que a forma do contexto não dependa do conteúdo do token.
+		const token = await new SignJWT({})
+			.setProtectedHeader({ alg: "HS256" })
+			.setSubject("sem-claims@saudebliss.test")
+			.setIssuer(ISSUER)
+			.setAudience(AUDIENCE)
+			.setIssuedAt()
+			.setExpirationTime("1h")
+			.sign(new TextEncoder().encode(SECRET));
+
+		const principal = await authorize(makeEvent(token));
+
+		expect(principal.context).toEqual({
+			userId: "sem-claims@saudebliss.test",
+			email: "",
+			roles: "",
+		});
+	});
+
+	it("recusa evento sem headers", async () => {
+		// `headers` ausente acontece de verdade em invocação direta e em teste de
+		// console — não pode virar `TypeError`, que o API Gateway traduziria em
+		// 500 em vez de 401.
+		const { headers: _ignorado, ...semHeaders } = makeEvent();
+
+		await expect(authorize(semHeaders as Parameters<typeof authorize>[0])).rejects.toThrow();
+	});
+});
+
+describe("TokenService — chave via Secrets Manager", () => {
+	it("busca a chave quando só JWT_SECRET_ID está definida", async () => {
+		delete process.env.JWT_SECRET;
+		process.env.JWT_SECRET_ID = "/local/saude-bliss/auth/jwt";
+
+		const secrets = {
+			getSecretJson: jest.fn().mockResolvedValue({ signingKey: SECRET }),
+			clearCache: jest.fn(),
+		};
+		const service = new TokenService(secrets as never);
+
+		const claims = await service.verify(await mint());
+
+		expect(claims.sub).toBe("daniel@saudebliss.test");
+		expect(secrets.getSecretJson).toHaveBeenCalledWith("/local/saude-bliss/auth/jwt");
+	});
+
+	it("busca o segredo uma vez só entre invocações do mesmo container", async () => {
+		delete process.env.JWT_SECRET;
+		process.env.JWT_SECRET_ID = "/local/saude-bliss/auth/jwt";
+
+		const secrets = {
+			getSecretJson: jest.fn().mockResolvedValue({ signingKey: SECRET }),
+			clearCache: jest.fn(),
+		};
+		const service = new TokenService(secrets as never);
+
+		await service.verify(await mint());
+		await service.verify(await mint());
+
+		// Sem o cache, toda requisição autenticada pagaria ~50ms de Secrets
+		// Manager — no caminho crítico de cada chamada à API.
+		expect(secrets.getSecretJson).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("TokenService — bordas do contrato do token", () => {
+	it("recusa chamada sem headers", () => {
+		// Assinatura com default: chamar sem argumento é legítimo em código de
+		// teste e invocação direta, e precisa recusar em vez de estourar.
+		expect(() => new TokenService().extractToken()).toThrow(/Authorization/);
+	});
+
+	it("recusa token sem a claim sub", async () => {
+		// `sub` vira o `principalId` da política. Sem ela o API Gateway receberia
+		// `undefined` como identificador e a autorização passaria a valer para
+		// "todo mundo" no cache do authorizer.
+		const semSub = await new SignJWT({ email: "x@y.test" })
+			.setProtectedHeader({ alg: "HS256" })
+			.setIssuer(ISSUER)
+			.setAudience(AUDIENCE)
+			.setIssuedAt()
+			.setExpirationTime("1h")
+			.sign(new TextEncoder().encode(SECRET));
+
+		await expect(new TokenService().verify(semSub)).rejects.toThrow(/sub/);
+	});
+});

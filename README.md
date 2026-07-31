@@ -1,6 +1,6 @@
 # Saúde Bliss — Gestão de Solicitações
 
-[![testes](https://img.shields.io/badge/testes-291%20passando-brightgreen)](#-testes)
+[![testes](https://img.shields.io/badge/testes-431%20passando-brightgreen)](#-testes)
 [![e2e](https://img.shields.io/badge/playwright-21%20cenários-brightgreen)](#-automação-da-conferência)
 [![stack](https://img.shields.io/badge/stack-Node%2022%20·%20TypeScript%20·%20Fastify-blue)](#-stack)
 [![iac](https://img.shields.io/badge/iac-Terraform%20·%20Serverless%20Framework-844fba)](#-deploy)
@@ -242,7 +242,7 @@ conferência, trilha de auditoria, e o `requestId` persistido.
 ### 4. Suítes automatizadas
 
 ```bash
-pnpm test        # 157 testes — unidade, integração, contrato e e2e
+pnpm test        # 431 testes — unidade, integração, contrato e e2e
 pnpm test:e2e    # 42 execuções Playwright (21 cenários × headless e headed)
 pnpm typecheck   # sem erros de tipo em todo o monorepo
 ```
@@ -479,7 +479,7 @@ pnpm --filter @saude-bliss/api check:routes
 
 ## 🧪 Testes
 
-**291 testes** em quatro camadas — 157 nos microserviços e 134 no runtime
+**431 testes** em quatro camadas — 214 nos microserviços e 217 no runtime
 compartilhado —, com nomes em PT-BR descrevendo comportamento.
 
 ```bash
@@ -504,9 +504,17 @@ Duas suítes valem além da cobertura:
   solicitação e afirma que exatamente uma vence e exatamente um evento é gravado.
   É o compare-and-set no `where` do `UPDATE`; repositório mockado só pode supor.
 
-**Cobertura:** 95%+ em statements, linhas e funções nas camadas de lógica. Branches
-fica abaixo onde os ramos restantes são fallbacks defensivos sem caminho de negócio
-que os atinja — forçar 95% ali produziria teste escrito para a métrica.
+**Cobertura:** 100% de statements, linhas e funções em `bliss-authorizer` e
+`bliss-reviews`; 99%+ nos demais e no runtime compartilhado. Branches fica um pouco
+abaixo onde os ramos restantes são fallbacks defensivos sem caminho de negócio que
+os atinja — o `where` opcional do Drizzle, o coerce do Zod. Forçar 95% ali
+produziria teste escrito para a métrica, não para o comportamento.
+
+Os limites são verificados no CI, e vale registrar o que eles pegaram: ao escrever
+os testes que faltavam para o `PasswordService` apareceu um defeito real — a
+derivação usava o comprimento vindo do **hash armazenado**, então quem controlasse
+a linha do banco escolheria quantos bytes precisavam bater, e um hash truncado
+passaria a verificar. Corrigido para derivar sempre em `KEY_LENGTH`.
 
 ---
 

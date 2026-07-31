@@ -113,6 +113,17 @@ describe("GET /requests/{id}/timeline", () => {
 
 		expect(response.statusCode).toBe(404);
 	});
+
+	it("responde 400 quando o id da rota não é um UUID", async () => {
+		const response = await app.inject({ method: "GET", url: "/v1/reviews/nao-e-uuid/timeline" });
+
+		// 400 e não 404: o id é malformado, não é uma solicitação ausente. Deixar
+		// passar levaria o valor até o banco, onde o Postgres devolveria erro de
+		// tipo — um 500 no lugar de um 400.
+		expect(response.statusCode).toBe(400);
+		expect(response.json().error.code).toBe("VALIDATION_ERROR");
+		expect(repository.findById).not.toHaveBeenCalled();
+	});
 });
 
 describe("rastreabilidade", () => {
