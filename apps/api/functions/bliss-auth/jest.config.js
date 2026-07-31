@@ -24,6 +24,9 @@ const base = {
 	clearMocks: true,
 	restoreMocks: true,
 	setupFiles: ["<rootDir>/__tests__/.jest/setup.ts"],
+};
+
+module.exports = {
 	/**
 	 * 30s, e não os 5s padrão.
 	 *
@@ -32,11 +35,12 @@ const base = {
 	 * máquina de desenvolvimento isso leva ~2s e cabe no padrão; no runner
 	 * compartilhado do CI passa de 5s e o hook estoura — com uma mensagem de
 	 * timeout que não indica compilação como causa, e que só aparece no CI.
+	 *
+	 * Fica na raiz, e não dentro de `base`: `testTimeout` é opção **global** do
+	 * Jest, e declarada dentro de um project é descartada em silêncio.
 	 */
 	testTimeout: 30_000,
-};
 
-module.exports = {
 	projects: [
 		{ ...base, displayName: "unit", testMatch: ["<rootDir>/__tests__/unit/**/*.test.ts"] },
 		{ ...base, displayName: "integration", testMatch: ["<rootDir>/__tests__/integration/**/*.test.ts"] },
