@@ -75,6 +75,9 @@ export function registerHealthRoute(app: FastifyInstance, options: HealthRouteOp
 				await options.healthProbe();
 				return blissSuccess(reply, req, { data: { status: "ok", dependencies: "up", ...base } });
 			} catch (error) {
+				// Sem este log, um health 503 não diz **por que** a dependência caiu —
+				// e o healthcheck vira um alarme sem diagnóstico junto.
+				req.log.error({ err: error, service: options.serviceName }, "sonda de saúde falhou");
 				return blissFail(reply, req, 503, {
 					code: "DATABASE_UNAVAILABLE",
 					message: "Dependência indisponível no momento",

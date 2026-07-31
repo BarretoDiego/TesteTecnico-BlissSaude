@@ -3,9 +3,19 @@
  *
  * Documentação OpenAPI, parametrizada por microserviço.
  *
- * A UI sobe apenas em ambiente local: em produção seria superfície de ataque sem
- * contrapartida. O documento JSON (`/docs/json`) continua disponível em todo
- * ambiente, o que permite gerar cliente e rodar teste de contrato no pipeline.
+ * A UI sobe apenas fora da Lambda. São duas razões distintas:
+ *
+ * 1. Em ambiente publicado seria superfície de ataque sem contrapartida.
+ * 2. O plugin lê os assets estáticos do **disco**, e o bundle da Lambda contém
+ *    só o JavaScript. Registrar a UI lá derruba toda requisição com ENOENT antes
+ *    mesmo de chegar à rota.
+ *
+ * A checagem é `isLocalEnv() && !isLambdaRuntime()`, não só a primeira: uma
+ * Lambda implantada no LocalStack roda com `BLISS_ENV=local`. `local` é o nome
+ * do ambiente, não o contexto de execução.
+ *
+ * O documento JSON (`/docs/json`) continua disponível em todo ambiente, o que
+ * permite gerar cliente e rodar teste de contrato no pipeline.
  */
 
 import fastifySwagger from "@fastify/swagger";
@@ -34,7 +44,7 @@ export async function setupSwagger(app: FastifyInstance, options: SwaggerOptions
 		},
 	});
 
-	if (envService.isLocalEnv()) {
+	if (envService.isLocalEnv() && !envService.isLambdaRuntime()) {
 		await app.register(fastifySwaggerUi, {
 			routePrefix: "/docs",
 			uiConfig: { docExpansion: "list", deepLinking: true },

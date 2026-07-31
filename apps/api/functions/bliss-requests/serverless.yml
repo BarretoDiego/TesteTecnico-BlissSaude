@@ -1,0 +1,69 @@
+# =============================================================================
+# bliss-requests — Serverless Framework
+#
+# Papel deste arquivo: **emulação local** e empacotamento. Ele nunca cria recurso
+# na nuvem — quem provisiona é o Terraform (`infra/terraform/`). A divisão está
+# documentada em docs/adr/0002-serverless-framework-vs-terraform.md.
+#
+# `package.artifact` aponta para o mesmo zip que o Terraform consome, produzido
+# por `build.js`. Não há segundo bundler nem plugin de build: o que roda em
+# `sls offline` é byte a byte o que sobe na Lambda.
+#
+# Sintaxe compatível com v3 e v4. Roda em v3 por padrão porque v4 exige conta e
+# SERVERLESS_ACCESS_KEY, o que quebraria um deploy local offline.
+# =============================================================================
+
+service: bliss-requests
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${env:AWS_REGION, 'us-east-1'}
+  stage: ${opt:stage, 'local'}
+  memorySize: 512
+  timeout: 29 # teto do API Gateway REST; adiantar o corte evita 504 opaco
+  logRetentionInDays: 7
+  environment:
+    BLISS_ENV: ${self:provider.stage}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'info'}
+    API_PREFIX: ${env:API_PREFIX, '/v1'}
+    SERVICE_NAME: bliss-requests
+    DATABASE_URL: ${env:DATABASE_URL, ''}
+    DB_SECRET_ID: ${env:DB_SECRET_ID, ''}
+    DB_POOL_MAX: ${env:DB_POOL_MAX, '1'}
+    AWS_ENDPOINT_URL: ${env:AWS_ENDPOINT_URL, ''}
+
+package:
+  # Artefato pronto, gerado por `pnpm build`. Sem isso o Serverless faria o
+  # próprio empacotamento e divergiria do que o Terraform publica.
+  artifact: dist/function.zip
+
+functions:
+  api:
+    handler: app.lambdaHandler
+    description: Microserviço bliss-requests — todas as rotas de /${self:provider.environment.API_PREFIX}/requests
+    # Concorrência reservada é teto duro de conexões no banco. A aritmética que
+    # precisa valer: max_connections >= reserved_concurrency * DB_POOL_MAX + folga.
+    # Ver packages/database/src/client.ts.
+    reservedConcurrency: ${env:RESERVED_CONCURRENCY, 10}
+    events:
+      # Uma rota greedy por serviço: o prefixo de domínio é o que permite ao API
+      # Gateway encaminhar tudo para esta função sem regra por método.
+      - http:
+          path: /requests
+          method: any
+          cors: true
+      - http:
+          path: /requests/{proxy+}
+          method: any
+          cors: true
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 4001
+    lambdaPort: 5001
+    noPrependStageInUrl: true

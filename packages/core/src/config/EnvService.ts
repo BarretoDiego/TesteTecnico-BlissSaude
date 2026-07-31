@@ -58,7 +58,20 @@ export class EnvService extends BaseService {
 
 	/** `true` quando roda em Lambda de verdade ou no LocalStack. */
 	isAWSEnv(): boolean {
-		return !this.isLocalEnv() || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+		return !this.isLocalEnv() || this.isLambdaRuntime();
+	}
+
+	/**
+	 * `true` quando o processo é uma invocação de Lambda.
+	 *
+	 * Distinto de `isLocalEnv()`: `local` é o nome do **ambiente**, e uma Lambda
+	 * implantada no LocalStack roda com `BLISS_ENV=local`. Confundir os dois faz
+	 * um recurso pensado para a máquina de desenvolvimento ser habilitado dentro
+	 * da função — foi assim que o Swagger UI, que lê assets do disco, quebrou
+	 * toda requisição com ENOENT depois do primeiro deploy.
+	 */
+	isLambdaRuntime(): boolean {
+		return Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
 	}
 
 	getRegion(): string {

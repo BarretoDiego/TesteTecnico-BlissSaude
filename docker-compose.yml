@@ -2,11 +2,23 @@ name: saude-bliss
 
 services:
   # ---------------------------------------------------------------------------
-  # LocalStack Pro — emula API Gateway, Lambda, RDS, Secrets Manager, IAM e logs.
-  # RDS é feature Pro, por isso a imagem `-pro` e o LOCALSTACK_AUTH_TOKEN.
+  # LocalStack — emula API Gateway, Lambda, IAM, Secrets Manager e CloudWatch.
+  #
+  # Fixado na **v3** de propósito: a partir de 2026 as imagens `latest` exigem
+  # LOCALSTACK_AUTH_TOKEN mesmo para os serviços gratuitos, e o container aborta
+  # na inicialização sem ele. A v3 é a última que roda sem licença, e cobre tudo
+  # o que este projeto usa — API Gateway, Lambda, IAM, Secrets Manager, logs.
+  #
+  # O único recurso que fica de fora é a emulação de RDS, que sempre foi Pro. O
+  # Terraform já vem com `create_rds_instance = false`, apontando o segredo para
+  # o Postgres deste mesmo compose: o deploy roda ponta a ponta sem licença.
+  #
+  # Com um token válido, use `LOCALSTACK_IMAGE=localstack/localstack-pro:latest`,
+  # acrescente `rds` em LOCALSTACK_SERVICES e ligue `create_rds_instance = true`
+  # em `infra/terraform/environments/local.tfvars`.
   # ---------------------------------------------------------------------------
   localstack:
-    image: localstack/localstack-pro:latest
+    image: ${LOCALSTACK_IMAGE:-localstack/localstack:3}
     container_name: saude-bliss-localstack
     ports:
       # Gateway único. Porta configurável para não colidir com outra instância
@@ -19,7 +31,11 @@ services:
       # então um `:?` obrigatório impediria até `up postgres`. Quem cobra o token
       # é scripts/localstack/wait-ready.sh, que valida a licença de fato ativa.
       LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
-      SERVICES: apigateway,lambda,rds,secretsmanager,iam,logs,cloudwatch,sts,s3
+      # `rds` fora da lista de propósito: pedir um serviço Pro faz o container
+      # abortar com "License activation failed" mesmo na imagem Community.
+      # Acrescente `rds` aqui junto com a imagem `-pro` e o token para exercitar
+      # o RDS emulado.
+      SERVICES: ${LOCALSTACK_SERVICES:-apigateway,lambda,secretsmanager,iam,logs,cloudwatch,sts,s3,events,sqs}
       DEBUG: ${LOCALSTACK_DEBUG:-0}
       # As Lambdas rodam em containers próprios; anexá-las a esta rede é o que
       # permite resolver `postgres` e o endpoint do RDS por nome.
