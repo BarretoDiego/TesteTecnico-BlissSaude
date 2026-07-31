@@ -1,0 +1,36 @@
+{
+	"name": "saude-bliss",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Gestão de solicitações — API serverless (Node + TypeScript + Serverless Framework + Terraform) e automação de conferência com Playwright",
+	"packageManager": "pnpm@10.30.0",
+	"engines": {
+		"node": ">=22 <23"
+	},
+	"scripts": {
+		"infra:up": "docker compose up -d && ./scripts/localstack/wait-ready.sh",
+		"infra:down": "docker compose down",
+		"infra:reset": "docker compose down -v && docker compose up -d && ./scripts/localstack/wait-ready.sh",
+		"dev:api": "pnpm --filter @saude-bliss/api dev",
+		"dev:web": "pnpm --filter @saude-bliss/web dev",
+		"build": "pnpm --filter @saude-bliss/api build && pnpm --filter @saude-bliss/web build",
+		"test": "pnpm --filter @saude-bliss/api test",
+		"test:e2e": "pnpm --filter @saude-bliss/automation test",
+		"typecheck": "pnpm -r typecheck",
+		"deploy:local": "./scripts/localstack/deploy.sh",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/api/dist apps/web/.next"
+	},
+	"devDependencies": {
+		"prettier": "^3.4.2",
+		"prettier-plugin-organize-imports": "^4.1.0",
+		"typescript": "^5.7.3"
+	},
+	"pnpm": {
+		"//": "esbuild precisa do postinstall para baixar o binário nativo da plataforma.",
+		"onlyBuiltDependencies": [
+			"esbuild"
+		]
+	}
+}

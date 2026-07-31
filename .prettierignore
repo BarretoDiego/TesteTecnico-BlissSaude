@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+coverage
+pnpm-lock.yaml
+apps/api/src/db/migrations
+apps/automation/reports
+apps/automation/test-results
+docs/evidence
+infra/terraform/.terraform

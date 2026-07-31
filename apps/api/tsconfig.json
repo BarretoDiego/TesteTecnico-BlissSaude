@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./src/*"],
+			"@saude-bliss/contracts": ["../../packages/contracts/src/index.ts"]
+		},
+		"types": ["node", "jest"]
+	},
+	"include": ["src/**/*.ts", "__tests__/**/*.ts", "scripts/**/*.ts", "run.local.ts", "drizzle.config.ts"],
+	"exclude": ["node_modules", "dist"]
+}

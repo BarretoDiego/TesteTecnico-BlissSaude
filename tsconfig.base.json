@@ -1,0 +1,30 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022"],
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"declaration": false,
+		"sourceMap": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+
+		/**
+		 * Desvio consciente do padrão da casa (backend Eyecare usa `strict: false`).
+		 * Projeto greenfield: sem dívida legada para acomodar, então o custo de ligar
+		 * é zero e o ganho é real. Ver docs/standards/global/typescript-configuration.md
+		 */
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+
+		/**
+		 * `exactOptionalPropertyTypes` fica desligado de propósito: briga com o output
+		 * de `.optional()` do Zod e obrigaria casts em todo lugar sem ganho real.
+		 */
+		"exactOptionalPropertyTypes": false
+	}
+}
