@@ -1,7 +1,7 @@
 # Saúde Bliss — Gestão de Solicitações
 
-[![testes](https://img.shields.io/badge/testes-307%20passando-brightgreen)](#-testes)
-[![e2e](https://img.shields.io/badge/playwright-19%20cenários-brightgreen)](#-automação-da-conferência)
+[![testes](https://img.shields.io/badge/testes-291%20passando-brightgreen)](#-testes)
+[![e2e](https://img.shields.io/badge/playwright-21%20cenários-brightgreen)](#-automação-da-conferência)
 [![stack](https://img.shields.io/badge/stack-Node%2022%20·%20TypeScript%20·%20Fastify-blue)](#-stack)
 [![iac](https://img.shields.io/badge/iac-Terraform%20·%20Serverless%20Framework-844fba)](#-deploy)
 
@@ -16,6 +16,8 @@ conferência operacional** com Playwright — mais um backoffice que fecha o cic
 - [Arquitetura](#-arquitetura)
 - [Stack](#-stack)
 - [Início rápido](#-início-rápido)
+- [Verificação](#-verificação)
+- [Telas](#-telas)
 - [Endpoints](#-endpoints)
 - [Rastreabilidade por requestId](#-rastreabilidade-por-requestid)
 - [Deploy](#-deploy)
@@ -122,49 +124,180 @@ Detalhes em [`CLAUDE.md`](CLAUDE.md) e [ADR 0001](docs/adr/0001-microservicos-po
 
 ## 🚀 Início rápido
 
-**Pré-requisitos:** Node 22, pnpm 10, Docker, Terraform ≥ 1.5.
+**Pré-requisitos:** Node 22, pnpm 10, Docker, Terraform ≥ 1.5, AWS CLI.
+No macOS: `brew install node pnpm terraform awscli` e o Docker Desktop ou OrbStack.
+
+### Um comando
 
 ```bash
-git clone <repo> && cd saude-bliss
-cp .env.example .env
-pnpm install
+git clone <repo> && cd saude-bliss && pnpm install && pnpm start
 ```
 
-### Opção A — desenvolvimento local (mais rápido)
+`pnpm start` faz tudo em ordem — checa os pré-requisitos, cria o `.env`, sobe
+LocalStack e Postgres, empacota os quatro microserviços, provisiona com Terraform,
+aplica migrations e seed, roda o smoke test, sobe o backoffice e **imprime os
+endereços no fim**. É idempotente: rodar de novo com tudo no ar reaproveita.
 
-Sobe os quatro domínios em um processo, contra o Postgres do compose.
+A ordem é o motivo de o script existir. O Terraform lê o zip pelo hash do
+conteúdo, as migrations precisam da URL que o `apply` produziu, e o backoffice
+precisa da URL do API Gateway antes de subir. Errar a sequência falha de formas
+que não se parecem com a causa.
+
+Ao final:
+
+|                                     |                                                                               |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| **Backoffice**                      | http://localhost:3000                                                         |
+| **API (API Gateway do LocalStack)** | `pnpm urls` imprime — a URL carrega o id do REST API, que muda a cada `apply` |
+| **Login**                           | `daniel.morais@saudebliss.test` / `saudebliss123`                             |
+
+> **Sem licença do LocalStack.** A imagem está fixada na v3 e o Terraform já vem
+> com `create_rds_instance = false`. Nada aqui exige token.
+
+### Comandos
+
+| Comando                  | O que faz                                                    |
+| ------------------------ | ------------------------------------------------------------ |
+| `pnpm start`             | sobe tudo, do zero ao sistema no ar                          |
+| `pnpm stop`              | derruba tudo (preserva os dados)                             |
+| `pnpm reset`             | derruba, apaga os volumes e sobe do zero                     |
+| `pnpm urls`              | endereços, credenciais e telas                               |
+| `pnpm resources`         | inventário do que existe na AWS local                        |
+| `pnpm logs`              | logs das Lambdas no CloudWatch                               |
+| `pnpm logs --trace <id>` | uma requisição inteira, atravessando os serviços             |
+| `pnpm verify`            | verificação ponta a ponta (ver [Verificação](#-verificação)) |
+| `pnpm smoke`             | 17 asserções contra a API implantada                         |
+| `pnpm test`              | testes de unidade, integração, contrato e e2e                |
+| `pnpm test:e2e`          | suíte Playwright (headless + headed)                         |
+| `pnpm evidence`          | regenera `docs/evidence/`                                    |
+
+### Modo de desenvolvimento
+
+Para iterar em código, sem passar por empacotamento e deploy a cada mudança:
 
 ```bash
-docker compose up -d postgres
-pnpm --filter @saude-bliss/database db:migrate
-pnpm --filter @saude-bliss/database db:seed
-
-pnpm --filter @saude-bliss/api dev      # API agregada  → :4000
-pnpm --filter @saude-bliss/web dev      # backoffice    → :3000
+pnpm infra:up          # só LocalStack e Postgres
+pnpm db:migrate && pnpm db:seed
+pnpm dev:api           # os quatro domínios num processo → :4000 (Swagger em /docs)
+pnpm dev:web           # backoffice → :3000
 ```
 
-|            |                                                   |
-| ---------- | ------------------------------------------------- |
-| API        | http://localhost:4000/v1                          |
-| Swagger    | http://localhost:4000/docs                        |
-| Backoffice | http://localhost:3000                             |
-| Login      | `daniel.morais@saudebliss.test` / `saudebliss123` |
-
-Para rodar um domínio **isolado**, como ele roda em produção:
+Ou um domínio **isolado**, como ele roda em produção:
 
 ```bash
 pnpm --filter @saude-bliss/bliss-requests dev   # só /v1/requests → :4001
 pnpm --filter @saude-bliss/bliss-reviews  dev   # só /v1/reviews  → :4002
+pnpm --filter @saude-bliss/bliss-auth     dev   # só /v1/auth     → :4003
 ```
 
-### Opção B — deploy completo no LocalStack
+---
 
-API Gateway + Lambda + IAM + Secrets Manager + CloudWatch, provisionados por
-Terraform. **Não precisa de licença** — ver [Deploy](#-deploy).
+## ✅ Verificação
+
+Como confirmar que tudo funciona, do mais rápido ao mais completo.
+
+### 1. Pelo navegador
+
+`pnpm urls` imprime os endereços. Entre com `daniel.morais@saudebliss.test` /
+`saudebliss123`. Cada tela exercita rotas diferentes:
+
+| Tela                 | Rotas que exercita                                 |
+| -------------------- | -------------------------------------------------- |
+| `/solicitacoes`      | `GET /requests` — filtros e paginação              |
+| `/solicitacoes/nova` | `POST /requests` — validação e 201                 |
+| `/solicitacoes/{id}` | `GET /requests/{id}`, `GET /reviews/{id}/timeline` |
+| `/conferencia`       | `PATCH /reviews/{id}` — com confirmação            |
+| `/status`            | os três `/health` e o `GET /auth/me`               |
+| cabeçalho → seu nome | `GET /auth/me` no modal de perfil                  |
+
+**As doze rotas publicadas são alcançáveis pela interface.** A de status existe
+justamente para fechar as que nenhuma outra tela tocaria.
+
+### 2. Rastreabilidade, ponta a ponta
+
+O `requestId` que o cliente envia volta no envelope, no header, e atravessa todas
+as camadas de log até a coluna no banco:
 
 ```bash
-pnpm deploy:local
+curl -s "$(pnpm -s urls | grep -o 'http://localhost:4568[^ ]*v1')/requests?status=open" \
+  -H 'x-request-id: meu-teste'
+
+pnpm logs --trace meu-teste
 ```
+
+A segunda linha devolve a requisição inteira — controller, service e repositório —
+com o mesmo id que você escolheu. Na tela, o mesmo valor aparece em **Trace da
+criação** no detalhe da solicitação.
+
+### 3. Smoke test
+
+```bash
+pnpm smoke
+```
+
+17 asserções contra a API implantada: os três endpoints do desafio com 201/200/404,
+payload inválido em 400, id malformado em 400, filtros, conferência, 409 na segunda
+conferência, trilha de auditoria, e o `requestId` persistido.
+
+### 4. Suítes automatizadas
+
+```bash
+pnpm test        # 157 testes — unidade, integração, contrato e e2e
+pnpm test:e2e    # 42 execuções Playwright (21 cenários × headless e headed)
+pnpm typecheck   # sem erros de tipo em todo o monorepo
+```
+
+### 5. Verificação operacional completa
+
+```bash
+pnpm verify           # tudo, incluindo o deploy do zero (~6 min)
+pnpm verify:rapido    # pula o deploy (~2 min)
+```
+
+Cobre o que as suítes não alcançam: que o projeto **sobe do zero**, que cada
+microserviço roda isolado, que o modo agregado se comporta igual, que a
+autenticação funciona contra o banco de verdade, e que o deploy entrega uma API
+utilizável. É o roteiro que alguém faria à mão — roteirizado para ser executado
+inteiro, na mesma ordem, com resultado comparável entre execuções.
+
+### 6. Recursos na AWS local
+
+```bash
+pnpm resources
+```
+
+Lambdas, API Gateway, rotas, **autorização por método**, log groups e segredos.
+O LocalStack Community não tem console web — o painel do `app.localstack.cloud`
+exige conta —, então este é o substituto. Qualquer comando da AWS CLI funciona
+pelo wrapper:
+
+```bash
+./scripts/localstack/aws.sh lambda list-functions
+```
+
+O wrapper existe porque o LocalStack deste projeto sobe na porta **4568**, não na
+4566 padrão: outra instância pode já estar rodando na máquina, e `awslocal`
+acertaria a errada em silêncio.
+
+---
+
+## 🖥️ Telas
+
+O backoffice não é vitrine: é o sistema que a automação do Playwright opera, e
+cobre todas as rotas publicadas.
+
+| Tela                 | O que faz                                                                                                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Solicitações**     | listagem com filtros por status, prioridade e solicitante, e paginação com escolha de itens por página. Estado dos filtros e da página **na URL** — compartilhável, sobrevive à recarga, e a automação salta direto para um estado                     |
+| **Nova solicitação** | abre a solicitação. Valida com o **mesmo** schema Zod da API, então as mensagens são idênticas dos dois lados; erros do servidor voltam para o campo. A confirmação mostra o `createdTraceId` — o `x-request-id` que o browser gerou, gravado no banco |
+| **Detalhe**          | dados da solicitação e trilha de auditoria com rótulos em PT-BR, quem agiu, quando e o trace de cada evento. O botão **Recarregar trilha** usa `GET /reviews/{id}/timeline`, do outro microserviço                                                     |
+| **Conferência**      | fila paginada dos pendentes. Revisar e rejeitar pedem **confirmação num modal** que nomeia a solicitação: a ação é irreversível e fica registrada em nome de quem confirmou                                                                            |
+| **Status**           | saúde dos três microserviços em paralelo e a identidade da sessão. Diz _qual_ Lambda caiu, não só que "a API falhou"                                                                                                                                   |
+| **Perfil**           | clique no seu nome no cabeçalho: nome, e-mail, perfis de acesso e identificador, buscados por `GET /auth/me` a cada abertura — não do estado do login, que pode estar velho                                                                            |
+
+Todo elemento que a automação alcança tem `data-testid` estável, e os valores
+aparecem também em `data-*`. É o que permite ao Playwright comparar a tela com a
+API sem depender de texto traduzido nem de posição de coluna.
 
 ---
 
@@ -346,10 +479,12 @@ pnpm --filter @saude-bliss/api check:routes
 
 ## 🧪 Testes
 
-**307 testes** em quatro camadas, nomes em PT-BR descrevendo comportamento.
+**291 testes** em quatro camadas — 157 nos microserviços e 134 no runtime
+compartilhado —, com nomes em PT-BR descrevendo comportamento.
 
 ```bash
 pnpm test                                        # todos os microserviços
+pnpm test:coverage                               # com relatório de cobertura
 pnpm --filter @saude-bliss/core test             # runtime compartilhado
 pnpm --filter @saude-bliss/bliss-requests test:e2e   # contra Postgres real
 ```
@@ -391,7 +526,8 @@ pnpm test:ui       # modo interativo
 pnpm report        # abre o relatório HTML
 ```
 
-**19 cenários** — smoke, filtros, conferência diária, rastreabilidade e divergências.
+**21 cenários** — smoke, filtros, paginação, conferência diária (incluindo o cancelamento
+da confirmação), rastreabilidade e divergências.
 
 ### O que faz disso uma conferência
 

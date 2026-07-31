@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ProfileDialog } from "~/components/shared/ProfileDialog";
 import { useSession } from "~/providers/SessionProvider";
 
 const NAV = [
@@ -22,6 +23,7 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
 	const { user, loading, logout } = useSession();
 	const router = useRouter();
 	const pathname = usePathname();
+	const [profileOpen, setProfileOpen] = useState(false);
 
 	useEffect(() => {
 		if (!loading && !user) router.replace("/login");
@@ -55,9 +57,20 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
 					</div>
 
 					<div className="flex items-center gap-4">
-						<span className="text-sm text-slate-600" data-testid="current-user">
+						<button
+							onClick={() => setProfileOpen(true)}
+							className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+							data-testid="current-user"
+							aria-haspopup="dialog"
+						>
+							<span
+								className="flex size-7 items-center justify-center rounded-full bg-slate-900 text-xs font-medium text-white"
+								aria-hidden
+							>
+								{user.name.slice(0, 2).toUpperCase()}
+							</span>
 							{user.name}
-						</span>
+						</button>
 						<button
 							onClick={() => void logout()}
 							className="text-sm text-slate-500 hover:text-slate-900"
@@ -70,6 +83,16 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
 			</header>
 
 			<main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+
+			<ProfileDialog
+				open={profileOpen}
+				fallback={user}
+				onClose={() => setProfileOpen(false)}
+				onLogout={() => {
+					setProfileOpen(false);
+					void logout();
+				}}
+			/>
 		</div>
 	);
 }

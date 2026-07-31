@@ -53,3 +53,5 @@ pnpm-debug.log*
 apps/automation/reports/
 apps/automation/test-results/
 coverage/
+.web.log
+.web.pid
