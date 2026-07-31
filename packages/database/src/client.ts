@@ -20,7 +20,7 @@
  * agregaria nada à demonstração. Ver docs/adr/0004-rds-e-pool-de-conexoes.md.
  */
 
-import { logger, SecretsService } from "@saude-bliss/core";
+import { logger, secretsService } from "@saude-bliss/core";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
@@ -38,7 +38,7 @@ let database: Database | undefined;
 let connecting: Promise<Database> | undefined;
 
 async function createDatabase(): Promise<Database> {
-	const connectionString = await SecretsService.getDatabaseUrl();
+	const connectionString = await secretsService.getDatabaseUrl();
 
 	pool = new Pool({
 		connectionString,

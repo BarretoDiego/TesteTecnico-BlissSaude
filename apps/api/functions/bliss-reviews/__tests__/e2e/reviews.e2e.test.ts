@@ -13,7 +13,7 @@
 import { runWithRequestContext } from "@saude-bliss/core";
 import { closeDb, getDb, requestEvents, requests } from "@saude-bliss/database";
 import { eq, like } from "drizzle-orm";
-import { ReviewDatabaseService } from "../../src/services/ReviewDatabaseService";
+import { ReviewsRepository } from "../../src/repositories/ReviewsRepository";
 import { ReviewsService } from "../../src/services/ReviewsService";
 
 const describeE2E = process.env.SKIP_E2E === "1" ? describe.skip : describe;
@@ -21,7 +21,7 @@ const describeE2E = process.env.SKIP_E2E === "1" ? describe.skip : describe;
 const RUN = `e2e-rev-${process.pid}`;
 const actor = (name: string) => `${RUN}.${name}@saudebliss.test`;
 
-const repository = new ReviewDatabaseService();
+const repository = new ReviewsRepository();
 const service = new ReviewsService(repository);
 
 async function cleanup(): Promise<void> {
@@ -169,7 +169,7 @@ describeE2E("ReviewsService.review — concorrência", () => {
 	});
 });
 
-describeE2E("ReviewDatabaseService.ping", () => {
+describeE2E("ReviewsRepository.ping", () => {
 	it("confirma conectividade com o banco", async () => {
 		await expect(repository.ping()).resolves.toBe(true);
 	});

@@ -13,6 +13,7 @@ saude-bliss/
 ├── packages/                       # compartilhado — nenhum pacote aqui conhece domínio
 │   ├── contracts/                  # enums, schemas Zod, envelope. Fonte única da verdade
 │   ├── core/                       # factory de app, logging, erros, contexto, config, Lambda
+│   │                               # + aws/: EventBridge, SQS, S3, CloudWatch, SecretsManager
 │   ├── database/                   # schema Drizzle, client, migrations, seed, mappers
 │   └── testing/                    # factories e duplos das suítes
 ├── apps/api/
@@ -36,8 +37,8 @@ apps/api/functions/bliss-<domínio>/
 │   ├── router/index.ts         # SOMENTE a tabela de rotas
 │   ├── controllers/            # {Domain}Controller.ts — orquestração fina
 │   ├── middlewares/            # {Action}Middleware.ts — Zod + validação de entrada
-│   └── services/               # {Domain}Service.ts       — regras de domínio
-│                               # {Domain}DatabaseService.ts — acesso a dados
+│   ├── services/               # {Domain}Service.ts    — regras de domínio
+│   └── repositories/           # {Domain}Repository.ts — acesso a dados
 ├── __tests__/{unit,integration,contract,e2e,.jest}/
 ├── run.local.ts                # sobe só este domínio, na porta dele
 ├── build.js                    # esbuild → dist/function.zip
@@ -62,6 +63,9 @@ O modo agregado existe para conveniência; o isolado é o que reproduz produçã
 - `packages/core` **não pode** importar `packages/database`: plataforma não depende de persistência. Um serviço sem banco não deve carregar o driver do Postgres. É por isso que `runLocal` recebe `onShutdown` em vez de importar `closeDb`.
 - O **schema** é compartilhado (uma tabela, uma definição), as **queries** não: cada serviço tem seu `*DatabaseService` com apenas as operações do seu domínio.
 - Nada em `packages/` pode conhecer um domínio. Se um símbolo precisa saber o que é uma "solicitação", ele pertence ao microserviço.
+- `BlissLogger` lê `process.env` direto, sem passar pelo `EnvService`. É o único módulo com essa licença: ele é a base de `WithLogging` e portanto de `BaseService`, então importar o serviço de configuração — que também é um `BaseService` — criaria ciclo. Logging precisa existir antes de qualquer serviço.
+- **Toda** classe de serviço estende `BaseService`, inclusive `EnvService`, `SecretsService` e as integrações AWS. Serviço sem logging é ponto cego em produção.
+- Integração AWS que é efeito colateral (EventBridge, SQS, CloudWatch) **não lança**: falha ali não pode derrubar operação de negócio já persistida. Vira log de erro, que é o gancho do alarme.
 
 ### Responsabilidades
 
@@ -72,6 +76,7 @@ O modo agregado existe para conveniência; o isolado é o que reproduz produçã
 | **Controller** | log start/success, chama service, monta envelope              | regra de negócio, query |
 | **Service**    | regras de domínio, orquestração                               | SQL direto              |
 | **Repository** | Drizzle, transações. Único que importa `db`                   | regra de negócio        |
+| **AWS**        | integrações (`packages/core/src/aws/`), com logging           | regra de domínio        |
 
 ## 🔧 Padrões de código
 
@@ -158,10 +163,12 @@ O logger lê o `requestId` do `AsyncLocalStorage`, **não** de um parâmetro. Po
 4. **Só o repository importa `db`.**
 5. **Frontend nunca chama `fetch`/axios de dentro de componente** — sempre via `services/`.
 6. **`data-testid` estável em toda linha e célula da tabela** — retrofit de seletor é o que torna suíte Playwright flaky.
-7. **Terraform é a única coisa que toca infraestrutura.** Serverless Framework é emulador local e packager, nunca deploy.
-8. **Filtro de listagem vive na URL**, não em estado React.
-9. **Nome de teste em PT-BR descrevendo comportamento**: `it("retorna 404 quando a solicitação não existe")`.
-10. **Documentação entra no mesmo commit do código.**
+7. **Router recebe o prefixo por parâmetro** e declara `ROUTES` — é o que alimenta o log de inicialização e o verificador de paridade com o `serverless.yml`.
+8. **`run.local.ts` e `run.all.local.ts` não montam aplicação**: declaram e delegam a `createApp`/`createAggregatedApp` + `runLocal`. Os dois modos precisam vir do mesmo código, senão o desenvolvimento deixa de reproduzir produção.
+9. **Terraform é a única coisa que toca infraestrutura.** Serverless Framework é emulador local e packager, nunca deploy.
+10. **Filtro de listagem vive na URL**, não em estado React.
+11. **Nome de teste em PT-BR descrevendo comportamento**: `it("retorna 404 quando a solicitação não existe")`.
+12. **Documentação entra no mesmo commit do código.**
 
 ## 🧪 Testes
 

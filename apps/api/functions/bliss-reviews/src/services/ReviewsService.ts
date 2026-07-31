@@ -15,12 +15,12 @@ import type {
 } from "@saude-bliss/contracts";
 import { canTransition } from "@saude-bliss/contracts";
 import { BaseService, BlissError } from "@saude-bliss/core";
-import { ReviewDatabaseService } from "./ReviewDatabaseService";
+import { ReviewsRepository } from "../repositories/ReviewsRepository";
 
 const MODULE = "ReviewsService";
 
 export class ReviewsService extends BaseService {
-	constructor(private readonly repository: ReviewDatabaseService = new ReviewDatabaseService()) {
+	constructor(private readonly repository: ReviewsRepository = new ReviewsRepository()) {
 		super();
 	}
 

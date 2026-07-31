@@ -9,7 +9,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import { EnvService } from "../config/EnvService";
+import { envService } from "../config/EnvService";
 
 export interface RunLocalOptions {
 	serviceName: string;
@@ -35,8 +35,8 @@ export interface RunLocalOptions {
  */
 export async function runLocal(options: RunLocalOptions): Promise<FastifyInstance> {
 	const app = await options.buildApp();
-	const port = options.port ?? EnvService.getPort();
-	const prefix = EnvService.getApiPrefix();
+	const port = options.port ?? envService.getPort();
+	const prefix = envService.getApiPrefix();
 
 	await app.listen({ port, host: "0.0.0.0" });
 

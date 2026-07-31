@@ -9,17 +9,17 @@
 
 import { BlissError } from "@saude-bliss/core";
 import { makeEvent, makeRequest, makeReviewPayload, makeUuid } from "@saude-bliss/testing";
-import type { ReviewDatabaseService } from "../../src/services/ReviewDatabaseService";
+import type { ReviewsRepository } from "../../src/repositories/ReviewsRepository";
 import { ReviewsService } from "../../src/services/ReviewsService";
 
-function makeRepository(overrides: Partial<jest.Mocked<ReviewDatabaseService>> = {}) {
+function makeRepository(overrides: Partial<jest.Mocked<ReviewsRepository>> = {}) {
 	return {
 		findById: jest.fn(),
 		findEventsByRequestId: jest.fn().mockResolvedValue([]),
 		updateStatus: jest.fn(),
 		ping: jest.fn().mockResolvedValue(true),
 		...overrides,
-	} as unknown as jest.Mocked<ReviewDatabaseService>;
+	} as unknown as jest.Mocked<ReviewsRepository>;
 }
 
 describe("ReviewsService.review — caminho feliz", () => {
@@ -114,7 +114,9 @@ describe("ReviewsService.review — recusas", () => {
 			findById: jest.fn().mockResolvedValue(makeRequest({ status: "reviewed" })),
 		});
 
-		await expect(new ReviewsService(repository).review(makeUuid(), makeReviewPayload())).rejects.toThrow(BlissError);
+		await expect(new ReviewsService(repository).review(makeUuid(), makeReviewPayload())).rejects.toBeInstanceOf(
+			BlissError
+		);
 
 		expect(repository.updateStatus).not.toHaveBeenCalled();
 	});

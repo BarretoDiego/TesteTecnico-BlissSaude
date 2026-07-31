@@ -13,7 +13,7 @@
 import { runWithRequestContext } from "@saude-bliss/core";
 import { closeDb, getDb, requestEvents, requests } from "@saude-bliss/database";
 import { eq, like } from "drizzle-orm";
-import { RequestDatabaseService } from "../../src/services/RequestDatabaseService";
+import { RequestsRepository } from "../../src/repositories/RequestsRepository";
 
 const describeE2E = process.env.SKIP_E2E === "1" ? describe.skip : describe;
 
@@ -24,7 +24,7 @@ const describeE2E = process.env.SKIP_E2E === "1" ? describe.skip : describe;
 const RUN = `e2e-${process.pid}`;
 const actor = (name: string) => `${RUN}.${name}@saudebliss.test`;
 
-const repository = new RequestDatabaseService();
+const repository = new RequestsRepository();
 
 async function cleanup(): Promise<void> {
 	const db = await getDb();
@@ -39,7 +39,7 @@ afterAll(async () => {
 	await closeDb();
 });
 
-function insert(overrides: Partial<Parameters<RequestDatabaseService["insert"]>[0]> = {}, traceId = "trace-e2e") {
+function insert(overrides: Partial<Parameters<RequestsRepository["insert"]>[0]> = {}, traceId = "trace-e2e") {
 	return runWithRequestContext({ requestId: traceId, startedAt: Date.now() }, () =>
 		repository.insert({
 			title: "Solicitação de teste e2e",
@@ -51,7 +51,7 @@ function insert(overrides: Partial<Parameters<RequestDatabaseService["insert"]>[
 	);
 }
 
-describeE2E("RequestDatabaseService.insert", () => {
+describeE2E("RequestsRepository.insert", () => {
 	it("persiste a solicitação com status open e os campos informados", async () => {
 		const created = await insert({ priority: "critical" });
 
@@ -94,7 +94,7 @@ describeE2E("RequestDatabaseService.insert", () => {
 	});
 });
 
-describeE2E("RequestDatabaseService.findById", () => {
+describeE2E("RequestsRepository.findById", () => {
 	it("encontra a solicitação recém-criada", async () => {
 		const created = await insert();
 
@@ -106,7 +106,7 @@ describeE2E("RequestDatabaseService.findById", () => {
 	});
 });
 
-describeE2E("RequestDatabaseService.list — filtros do desafio", () => {
+describeE2E("RequestsRepository.list — filtros do desafio", () => {
 	beforeAll(async () => {
 		await cleanup();
 		await insert({ createdBy: actor("ana"), priority: "high" });
@@ -160,7 +160,7 @@ describeE2E("RequestDatabaseService.list — filtros do desafio", () => {
 	});
 });
 
-describeE2E("RequestDatabaseService.findEventsByRequestId", () => {
+describeE2E("RequestsRepository.findEventsByRequestId", () => {
 	it("devolve a linha do tempo da solicitação", async () => {
 		const created = await insert();
 
@@ -175,7 +175,7 @@ describeE2E("RequestDatabaseService.findEventsByRequestId", () => {
 	});
 });
 
-describeE2E("RequestDatabaseService.ping", () => {
+describeE2E("RequestsRepository.ping", () => {
 	it("confirma conectividade com o banco", async () => {
 		await expect(repository.ping()).resolves.toBe(true);
 	});

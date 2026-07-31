@@ -11,17 +11,23 @@
  * O ganho não é economia de linhas: é que a rastreabilidade por `requestId`
  * passa a ser propriedade da plataforma, e não algo que um serviço novo pode
  * esquecer de implementar.
+ *
+ * `createApp` (um domínio, uma Lambda) e `createAggregatedApp` (todos os
+ * domínios num processo, para desenvolvimento) compartilham `applyPlatform`,
+ * então os dois modos se comportam de forma idêntica. Se divergissem, o loop de
+ * desenvolvimento deixaria de ser representativo do que roda em produção.
  */
 
 import fastifyCors from "@fastify/cors";
 import { REQUEST_ID_HEADER } from "@saude-bliss/contracts";
-import fastify, { type FastifyInstance, type FastifyPluginAsync } from "fastify";
+import fastify, { type FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import { EnvService } from "../config/EnvService";
+import { envService } from "../config/EnvService";
 import { DefaultErroHandler } from "../errors/DefaultErroHandler";
 import { enterRequestContext } from "../utils/requestContext";
 import { blissFail } from "../utils/responseEnvelope";
 import { registerHealthRoute, type HealthProbe } from "./healthRoute";
+import type { DomainRouter } from "./router";
 import { setupSwagger } from "./swagger";
 
 export interface CreateAppOptions {
@@ -32,7 +38,7 @@ export interface CreateAppOptions {
 	/** Prefixo das rotas do serviço, ex.: `/v1`. */
 	prefix?: string;
 	/** Tabela de rotas do domínio. */
-	router: FastifyPluginAsync;
+	router: DomainRouter;
 	/** Tags do OpenAPI. */
 	tags?: Array<{ name: string; description: string }>;
 	/**
@@ -42,32 +48,37 @@ export interface CreateAppOptions {
 	healthProbe?: HealthProbe;
 }
 
-export async function createApp(options: CreateAppOptions): Promise<FastifyInstance> {
-	const prefix = options.prefix ?? EnvService.getApiPrefix();
-
-	const app = fastify({
+/** Instância Fastify com as opções que todo serviço usa igual. */
+function createInstance(): FastifyInstance {
+	return fastify({
 		/**
-		 * O id vem do header quando presente. É o elo da cadeia: o interceptor do
-		 * backoffice e o cliente da automação enviam o header, então um único id
-		 * atravessa browser → API Gateway → Lambda → banco → log. Sem isso, cada
-		 * camada geraria o seu e a correlação se perderia.
+		 * O id da requisição vem do header quando presente. É o elo da cadeia: o
+		 * interceptor do backoffice e o cliente da automação enviam o header, então
+		 * um único id atravessa browser → API Gateway → Lambda → banco → log. Sem
+		 * isso, cada camada geraria o seu e a correlação se perderia.
 		 */
 		genReqId: (req) => (req.headers[REQUEST_ID_HEADER] as string) || randomUUID(),
-		logger: { level: EnvService.getLogLevel() },
+		logger: { level: envService.getLogLevel() },
 		// Sem isso o Fastify confia no socket e ignora o `x-forwarded-*` do API
 		// Gateway, fazendo todo log registrar o IP interno da AWS.
 		trustProxy: true,
 		bodyLimit: 1024 * 1024,
 	});
+}
 
+/**
+ * Aplica o comportamento de plataforma: CORS, contexto de requisição, handlers
+ * de erro e de rota não encontrada.
+ *
+ * Extraído para que `createApp` e `createAggregatedApp` não possam divergir.
+ */
+export async function applyPlatform(app: FastifyInstance, moduleName: string): Promise<void> {
 	await app.register(fastifyCors, {
-		origin: EnvService.optional("CORS_ORIGIN", "*"),
+		origin: envService.optional("CORS_ORIGIN", "*"),
 		methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
 		allowedHeaders: ["Content-Type", "Authorization", REQUEST_ID_HEADER],
 		exposedHeaders: [REQUEST_ID_HEADER],
 	});
-
-	await setupSwagger(app, options);
 
 	/**
 	 * Entrada no contexto assíncrono.
@@ -87,7 +98,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
 	});
 
 	app.setErrorHandler((error, req, reply) =>
-		DefaultErroHandler(error, reply, req, { module: options.serviceName, action: "onError" })
+		DefaultErroHandler(error, reply, req, { module: moduleName, action: "onError" })
 	);
 
 	app.setNotFoundHandler((req, reply) =>
@@ -97,11 +108,26 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
 			details: { method: req.method, url: req.url },
 		})
 	);
+}
+
+/** Aplicação de um microserviço — o que vai para dentro de uma Lambda. */
+export async function createApp(options: CreateAppOptions): Promise<FastifyInstance> {
+	const prefix = options.prefix ?? envService.getApiPrefix();
+	const app = createInstance();
+
+	await setupSwagger(app, options);
+	await applyPlatform(app, options.serviceName);
 
 	// `/health` em todo serviço, sempre no mesmo caminho e no mesmo formato: um
 	// healthcheck que varia por serviço é um healthcheck que ninguém automatiza.
 	await app.register(async (instance) => registerHealthRoute(instance, options), { prefix });
-	await app.register(options.router, { prefix });
+
+	// O prefixo vai ao router como parâmetro, não só ao `register`: assim a
+	// função de rotas conhece o agrupamento sob o qual está sendo montada e pode
+	// declará-lo no log de inicialização e no verificador de paridade.
+	await app.register(async (instance) => options.router(instance, { prefix, serviceName: options.serviceName }), {
+		prefix,
+	});
 
 	return app;
 }

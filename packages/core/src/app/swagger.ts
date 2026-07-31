@@ -11,7 +11,7 @@
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
 import type { FastifyInstance } from "fastify";
-import { EnvService } from "../config/EnvService";
+import { envService } from "../config/EnvService";
 
 interface SwaggerOptions {
 	serviceName: string;
@@ -34,7 +34,7 @@ export async function setupSwagger(app: FastifyInstance, options: SwaggerOptions
 		},
 	});
 
-	if (EnvService.isLocalEnv()) {
+	if (envService.isLocalEnv()) {
 		await app.register(fastifySwaggerUi, {
 			routePrefix: "/docs",
 			uiConfig: { docExpansion: "list", deepLinking: true },

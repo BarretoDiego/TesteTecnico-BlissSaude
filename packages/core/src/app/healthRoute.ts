@@ -11,7 +11,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { EnvService } from "../config/EnvService";
+import { envService } from "../config/EnvService";
 import { toJsonSchema } from "../utils/jsonSchema";
 import { blissFail, blissSuccess, buildErrorResponseSchema } from "../utils/responseEnvelope";
 
@@ -59,7 +59,7 @@ export function registerHealthRoute(app: FastifyInstance, options: HealthRouteOp
 		handler: async (req, reply) => {
 			const base = {
 				service: options.serviceName,
-				env: EnvService.getEnv(),
+				env: envService.getEnv(),
 				uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
 				version: process.env.SERVICE_VERSION ?? "1.0.0",
 			};

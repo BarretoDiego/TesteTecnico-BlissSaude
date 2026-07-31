@@ -10,9 +10,16 @@
  *
  * O `requestId` vem do `AsyncLocalStorage`, nunca de parâmetro: por isso services
  * e repositories não precisam receber `req`.
+ *
+ * ## Por que este módulo lê `process.env` direto
+ *
+ * O logger é a base da hierarquia: `WithLogging` — e portanto `BaseService` —
+ * depende dele. Se ele importasse `EnvService`, que agora é um `BaseService` para
+ * ter logging como as demais camadas, teríamos ciclo de módulos. Ler as duas
+ * variáveis de que precisa direto do ambiente é o corte natural: logging precisa
+ * existir antes de qualquer serviço, inclusive o de configuração.
  */
 
-import { EnvService } from "../config/EnvService";
 import { getElapsedMs, getRequestId } from "./requestContext";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -28,6 +35,18 @@ export interface LogParams {
 	[key: string]: unknown;
 }
 
+/** Repete a checagem do `EnvService` para não criar ciclo de módulos. */
+function isLocalEnv(): boolean {
+	const raw = (process.env.BLISS_ENV ?? process.env.NODE_ENV ?? "local").toLowerCase().trim();
+	return raw === "local" || raw === "localhost" || raw === "test";
+}
+
+function resolveDefaultLevel(): LogLevel {
+	const configured = process.env.LOG_LEVEL as LogLevel | undefined;
+	if (configured && configured in LEVEL_WEIGHT) return configured;
+	return isLocalEnv() ? "debug" : "info";
+}
+
 /** Serializa `Error` — `JSON.stringify` de um Error puro produz `{}`. */
 function normalizeParams(params?: LogParams): LogParams | undefined {
 	if (!params) return undefined;
@@ -40,7 +59,7 @@ function normalizeParams(params?: LogParams): LogParams | undefined {
 				message: value.message,
 				// Stack só em ambiente local: em produção vaza caminho de arquivo
 				// e estrutura interna para quem tiver acesso ao log.
-				...(EnvService.isLocalEnv() ? { stack: value.stack } : {}),
+				...(isLocalEnv() ? { stack: value.stack } : {}),
 			};
 			continue;
 		}
@@ -52,7 +71,7 @@ function normalizeParams(params?: LogParams): LogParams | undefined {
 export class BlissLogger {
 	private readonly minWeight: number;
 
-	constructor(level: LogLevel = (EnvService.getLogLevel() as LogLevel) ?? "info") {
+	constructor(level: LogLevel = resolveDefaultLevel()) {
 		this.minWeight = LEVEL_WEIGHT[level] ?? LEVEL_WEIGHT.info;
 	}
 

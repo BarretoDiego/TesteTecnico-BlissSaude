@@ -9,15 +9,30 @@
  *
  * Regra de fronteira: o que está aqui não pode conhecer nenhum domínio. Se um
  * símbolo precisa saber o que é uma "solicitação", ele pertence ao microserviço,
- * não a este pacote.
+ * não a este pacote. E `core` não importa `database`: plataforma não depende de
+ * persistência — um serviço sem banco não deve carregar o driver do Postgres.
  */
 
 // Aplicação
-export { createApp, type CreateAppOptions } from "./app/createApp";
+export {
+	createAggregatedApp,
+	type AggregatedService,
+	type CreateAggregatedAppOptions,
+} from "./app/createAggregatedApp";
+export { applyPlatform, createApp, type CreateAppOptions } from "./app/createApp";
 export { HealthDataSchema, HealthResponseSchema, registerHealthRoute, type HealthProbe } from "./app/healthRoute";
 export { createLambdaHandler } from "./app/lambda";
+export { describeRoutes, type DomainRouter, type RouteDescriptor, type RouterOptions } from "./app/router";
 export { runLocal, type RunLocalOptions } from "./app/runLocal";
 export { setupSwagger } from "./app/swagger";
+
+// Integrações AWS
+export { buildAwsClientConfig, getAwsClient, resetAwsClients, type AwsClientConfig } from "./aws/AwsClientFactory";
+export { CloudWatchService, cloudWatchService, type Metric } from "./aws/CloudWatchService";
+export { EventBridgeService, eventBridgeService, type DomainEvent } from "./aws/EventBridgeService";
+export { S3Service, s3Service, type UploadInput } from "./aws/S3Service";
+export { SecretsManagerService, secretsManagerService } from "./aws/SecretsManagerService";
+export { SqsService, sqsService, type ReceivedMessage, type SqsMessage } from "./aws/SqsService";
 
 // Classes base
 export { BaseController } from "./common/BaseController";
@@ -26,8 +41,8 @@ export { BaseService } from "./common/BaseService";
 export { WithLogging } from "./common/WithLogging";
 
 // Configuração
-export { EnvService, type AppEnv } from "./config/EnvService";
-export { SecretsService } from "./config/SecretsService";
+export { EnvService, envService, type AppEnv } from "./config/EnvService";
+export { SecretsService, secretsService } from "./config/SecretsService";
 
 // Erros
 export { BlissError, type BlissErrorOptions } from "./errors/BlissError";

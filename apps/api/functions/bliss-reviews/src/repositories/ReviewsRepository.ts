@@ -1,5 +1,5 @@
 /**
- * @module bliss-reviews/services/ReviewDatabaseService
+ * @module bliss-reviews/repositories/ReviewsRepository
  *
  * Acesso a dados do domínio de conferência.
  *
@@ -22,7 +22,7 @@ import {
 } from "@saude-bliss/database";
 import { and, count, desc, eq } from "drizzle-orm";
 
-const MODULE = "ReviewDatabaseService";
+const MODULE = "ReviewsRepository";
 
 export interface UpdateStatusInput {
 	id: string;
@@ -32,7 +32,7 @@ export interface UpdateStatusInput {
 	note?: string;
 }
 
-export class ReviewDatabaseService extends BaseRepository {
+export class ReviewsRepository extends BaseRepository {
 	constructor(private readonly dbPromise: Promise<Database> | null = null) {
 		super();
 	}

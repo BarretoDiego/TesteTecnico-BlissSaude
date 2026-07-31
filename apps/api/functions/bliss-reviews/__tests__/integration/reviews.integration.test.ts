@@ -16,8 +16,8 @@ const repository = {
 	ping: jest.fn().mockResolvedValue(true),
 };
 
-jest.mock("../../src/services/ReviewDatabaseService", () => ({
-	ReviewDatabaseService: jest.fn().mockImplementation(() => repository),
+jest.mock("../../src/repositories/ReviewsRepository", () => ({
+	ReviewsRepository: jest.fn().mockImplementation(() => repository),
 }));
 
 let app: FastifyInstance;

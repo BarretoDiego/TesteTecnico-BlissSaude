@@ -7,10 +7,10 @@
 
 import { BlissError } from "@saude-bliss/core";
 import { makeCreatePayload, makeEvent, makeListQuery, makeRequest, makeUuid } from "@saude-bliss/testing";
-import type { RequestDatabaseService } from "../../src/services/RequestDatabaseService";
+import type { RequestsRepository } from "../../src/repositories/RequestsRepository";
 import { RequestsService } from "../../src/services/RequestsService";
 
-function makeRepository(overrides: Partial<jest.Mocked<RequestDatabaseService>> = {}) {
+function makeRepository(overrides: Partial<jest.Mocked<RequestsRepository>> = {}) {
 	return {
 		insert: jest.fn(),
 		findById: jest.fn(),
@@ -18,7 +18,7 @@ function makeRepository(overrides: Partial<jest.Mocked<RequestDatabaseService>> 
 		list: jest.fn(),
 		ping: jest.fn().mockResolvedValue(true),
 		...overrides,
-	} as unknown as jest.Mocked<RequestDatabaseService>;
+	} as unknown as jest.Mocked<RequestsRepository>;
 }
 
 describe("RequestsService.create", () => {
@@ -77,7 +77,7 @@ describe("RequestsService.getById", () => {
 	it("não consulta eventos quando a solicitação não existe", async () => {
 		const repository = makeRepository({ findById: jest.fn().mockResolvedValue(null) });
 
-		await expect(new RequestsService(repository).getById(makeUuid())).rejects.toThrow(BlissError);
+		await expect(new RequestsService(repository).getById(makeUuid())).rejects.toBeInstanceOf(BlissError);
 
 		expect(repository.findEventsByRequestId).not.toHaveBeenCalled();
 	});

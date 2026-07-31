@@ -1,5 +1,5 @@
 /**
- * @module bliss-requests/services/RequestDatabaseService
+ * @module bliss-requests/repositories/RequestsRepository
  *
  * Acesso a dados do domínio de solicitações.
  *
@@ -28,7 +28,7 @@ import {
 } from "@saude-bliss/database";
 import { and, count, desc, eq, type SQL } from "drizzle-orm";
 
-const MODULE = "RequestDatabaseService";
+const MODULE = "RequestsRepository";
 
 export interface InsertRequestInput {
 	title: string;
@@ -42,7 +42,7 @@ export interface ListResult {
 	total: number;
 }
 
-export class RequestDatabaseService extends BaseRepository {
+export class RequestsRepository extends BaseRepository {
 	/**
 	 * Instância injetável do Drizzle.
 	 *

@@ -1,16 +1,22 @@
 /**
- * @module api/config/SecretsService
+ * @module core/config/SecretsService
  *
- * Resolução da connection string do banco.
+ * Resolução da credencial do banco.
  *
  * Local lê `DATABASE_URL` do `.env`; em AWS/LocalStack busca no Secrets Manager,
  * que é onde o Terraform escreve as credenciais do RDS. A Lambda nunca recebe
  * senha em variável de ambiente — variável de ambiente aparece no console e em
  * qualquer `GetFunctionConfiguration`.
+ *
+ * A conversa com a AWS fica no `SecretsManagerService` (camada de integração);
+ * aqui mora apenas a regra de **qual** segredo usar e como montar a connection
+ * string a partir dele.
  */
 
-import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-import { EnvService } from "./EnvService";
+import { secretsManagerService, type SecretsManagerService } from "../aws/SecretsManagerService";
+import { BaseService } from "../common/BaseService";
+
+const MODULE = "SecretsService";
 
 /** Formato escrito pelo Terraform em `aws_secretsmanager_secret_version`. */
 interface DatabaseSecret {
@@ -21,61 +27,62 @@ interface DatabaseSecret {
 	dbname: string;
 }
 
-/**
- * Cache em escopo de módulo: sobrevive entre invocações no mesmo container, o
- * que elimina uma chamada ao Secrets Manager por request. Sem isso, cada request
- * paga ~50ms e a conta de API calls cresce sem motivo.
- */
-let cachedConnectionString: string | undefined;
-let client: SecretsManagerClient | undefined;
+export class SecretsService extends BaseService {
+	/**
+	 * Cache da string montada, separado do cache de segredo bruto do
+	 * `SecretsManagerService`: poupa repetir o parse e a montagem da URL, ainda
+	 * que a chamada de rede já estivesse evitada.
+	 */
+	private connectionString: string | undefined;
 
-function getClient(): SecretsManagerClient {
-	if (!client) {
-		const endpoint = EnvService.getAwsEndpoint();
-		client = new SecretsManagerClient({
-			region: EnvService.getRegion(),
-			...(endpoint ? { endpoint } : {}),
-		});
+	constructor(private readonly secrets: SecretsManagerService = secretsManagerService) {
+		super();
 	}
-	return client;
-}
 
-export class SecretsService {
 	/**
 	 * Connection string do Postgres.
 	 *
-	 * Precedência: `DATABASE_URL` explícita vence sempre. Isso permite apontar a
-	 * Lambda para o Postgres do compose com uma variável, que é o escape hatch
-	 * quando o RDS emulado do LocalStack dá problema.
+	 * Precedência: `DATABASE_URL` explícita vence sempre. É o escape hatch que
+	 * aponta a Lambda para o Postgres do compose quando o RDS emulado do
+	 * LocalStack dá problema — precisa vencer inclusive sobre um `DB_SECRET_ID`
+	 * já configurado.
 	 */
-	static async getDatabaseUrl(): Promise<string> {
-		if (cachedConnectionString) return cachedConnectionString;
+	async getDatabaseUrl(): Promise<string> {
+		if (this.connectionString) return this.connectionString;
 
 		const explicit = process.env.DATABASE_URL;
 		if (explicit) {
-			cachedConnectionString = explicit;
+			this.logInfo(MODULE, "getDatabaseUrl", "usando DATABASE_URL do ambiente");
+			this.connectionString = explicit;
 			return explicit;
 		}
 
 		const secretId = process.env.DB_SECRET_ID;
 		if (!secretId) {
+			this.logError(MODULE, "getDatabaseUrl", "nenhuma origem de credencial configurada");
 			throw new Error("Defina DATABASE_URL ou DB_SECRET_ID para conectar ao banco");
 		}
 
-		const response = await getClient().send(new GetSecretValueCommand({ SecretId: secretId }));
-		if (!response.SecretString) {
-			throw new Error(`Secret ${secretId} não possui SecretString`);
-		}
+		const secret = await this.secrets.getSecretJson<DatabaseSecret>(secretId);
 
-		const secret = JSON.parse(response.SecretString) as DatabaseSecret;
+		// `encodeURIComponent` na senha: um `@` ou `/` sem escape quebra o parsing
+		// da URL e o driver tenta conectar em um host inventado.
 		const password = encodeURIComponent(secret.password);
-		cachedConnectionString = `postgresql://${secret.username}:${password}@${secret.host}:${secret.port}/${secret.dbname}`;
-		return cachedConnectionString;
+		this.connectionString = `postgresql://${secret.username}:${password}@${secret.host}:${secret.port}/${secret.dbname}`;
+
+		this.logSuccess(MODULE, "getDatabaseUrl", "credencial resolvida via Secrets Manager", {
+			secretId,
+			host: secret.host,
+			dbname: secret.dbname,
+		});
+		return this.connectionString;
 	}
 
 	/** Limpa o cache. Existe para os testes — nunca chamado em runtime. */
-	static resetCache(): void {
-		cachedConnectionString = undefined;
-		client = undefined;
+	resetCache(): void {
+		this.connectionString = undefined;
+		this.secrets.clearCache();
 	}
 }
+
+export const secretsService = new SecretsService();

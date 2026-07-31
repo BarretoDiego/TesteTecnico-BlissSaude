@@ -4,17 +4,29 @@
  * Tabela de rotas do domínio de solicitações.
  *
  * Declara **apenas** o mapeamento rota → schema → middleware → handler. Nenhuma
- * lógica. É também a fonte que `scripts/check-route-parity.ts` compara com o
- * `serverless.yml` para detectar divergência entre as duas declarações de rota.
+ * lógica. Recebe o prefixo sob o qual está sendo montado, o que torna o
+ * agrupamento do microserviço explícito aqui em vez de escondido no chamador —
+ * e permite registrar o mapa completo de rotas na inicialização.
+ *
+ * `ROUTES` é também a fonte que `scripts/check-route-parity.ts` compara com o
+ * `serverless.yml`, para detectar divergência entre as duas declarações de rota.
  */
 
+import { describeRoutes, type RouteDescriptor, type RouterOptions } from "@saude-bliss/core";
 import type { FastifyInstance } from "fastify";
 import RequestsController from "../controllers/RequestsController";
 import { CreateRequestMiddleware, CreateRequestSchema } from "../middlewares/CreateRequestMiddleware";
 import { GetRequestMiddleware, GetRequestSchema } from "../middlewares/GetRequestMiddleware";
 import { ListRequestsMiddleware, ListRequestsSchema } from "../middlewares/ListRequestsMiddleware";
 
-export default async function router(app: FastifyInstance): Promise<void> {
+/** Rotas expostas por este microserviço, relativas ao prefixo. */
+export const ROUTES: readonly RouteDescriptor[] = [
+	{ method: "POST", path: "/requests" },
+	{ method: "GET", path: "/requests" },
+	{ method: "GET", path: "/requests/:id" },
+];
+
+export default async function router(app: FastifyInstance, options: RouterOptions): Promise<void> {
 	app.route({
 		method: "POST",
 		url: "/requests",
@@ -45,4 +57,6 @@ export default async function router(app: FastifyInstance): Promise<void> {
 		preValidation: [GetRequestMiddleware],
 		handler: RequestsController.getById,
 	});
+
+	describeRoutes(app, options, ROUTES);
 }

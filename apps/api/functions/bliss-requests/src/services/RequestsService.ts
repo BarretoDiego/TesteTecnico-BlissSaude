@@ -16,12 +16,12 @@ import {
 	type Request as RequestDto,
 } from "@saude-bliss/contracts";
 import { BaseService, BlissError } from "@saude-bliss/core";
-import { RequestDatabaseService } from "./RequestDatabaseService";
+import { RequestsRepository } from "../repositories/RequestsRepository";
 
 const MODULE = "RequestsService";
 
 export class RequestsService extends BaseService {
-	constructor(private readonly repository: RequestDatabaseService = new RequestDatabaseService()) {
+	constructor(private readonly repository: RequestsRepository = new RequestsRepository()) {
 		super();
 	}
 
