@@ -26,7 +26,7 @@ import {
 	type Database,
 	type NewRequestEventRow,
 } from "@saude-bliss/database";
-import { and, count, desc, eq, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, inArray, type SQL } from "drizzle-orm";
 
 const MODULE = "RequestsRepository";
 
@@ -125,7 +125,10 @@ export class RequestsRepository extends BaseRepository {
 
 		const conditions: SQL[] = [];
 		if (query.createdBy) conditions.push(eq(requests.createdBy, query.createdBy));
-		if (query.status) conditions.push(eq(requests.status, query.status));
+		// `inArray` e não `eq`: o filtro aceita vários status — é o que permite à
+		// fila de conferência pedir `open` e `in_review` numa consulta paginada só,
+		// em vez de concatenar duas listagens e paginar sobre um total inventado.
+		if (query.status?.length) conditions.push(inArray(requests.status, query.status));
 		if (query.priority) conditions.push(eq(requests.priority, query.priority));
 		const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -134,7 +137,20 @@ export class RequestsRepository extends BaseRepository {
 		// Contagem e página em paralelo: são independentes, e serializá-las
 		// dobraria a latência da tela de listagem sem motivo.
 		const [rows, totalResult] = await Promise.all([
-			db.select().from(requests).where(where).orderBy(desc(requests.createdAt)).limit(query.pageSize).offset(offset),
+			db
+				.select()
+				.from(requests)
+				.where(where)
+				// `id` como desempate, não enfeite: `created_at` sozinho não é ordem
+				// total, e duas linhas do mesmo instante podem trocar de posição entre
+				// consultas. Sob LIMIT/OFFSET isso faz uma linha aparecer em duas
+				// páginas e outra sumir — defeito que só se manifesta depois de existir
+				// navegação por páginas, e que se lê como "a listagem perde registros".
+				// O Postgres carimba `now()` por transação, então um lote inserido junto
+				// colide por construção.
+				.orderBy(desc(requests.createdAt), desc(requests.id))
+				.limit(query.pageSize)
+				.offset(offset),
 			db.select({ value: count() }).from(requests).where(where),
 		]);
 

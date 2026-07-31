@@ -122,9 +122,19 @@ describeE2E("RequestsRepository.list — filtros do desafio", () => {
 	});
 
 	it("filtra por status", async () => {
-		const result = await repository.list({ status: "open", createdBy: actor("bruno"), page: 1, pageSize: 20 });
+		// Lista de um elemento: o filtro virou `in`, e `?status=open` normaliza para cá.
+		const result = await repository.list({ status: ["open"], createdBy: actor("bruno"), page: 1, pageSize: 20 });
 
 		expect(result.total).toBe(1);
+	});
+
+	it("filtra por vários status de uma vez", async () => {
+		// É o que sustenta a fila de conferência: `open` e `in_review` numa consulta
+		// paginada só, em vez de duas listagens concatenadas e um total somado.
+		const result = await repository.list({ status: ["open", "in_review"], page: 1, pageSize: 20 });
+
+		expect(result.total).toBeGreaterThanOrEqual(1);
+		expect(result.items.every((item) => item.status === "open" || item.status === "in_review")).toBe(true);
 	});
 
 	it("combina createdBy e priority", async () => {

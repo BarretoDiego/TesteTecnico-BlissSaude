@@ -205,9 +205,35 @@ describe("contrato dos endpoints", () => {
 
 		await app.inject({ method: "GET", url: "/v1/requests?status=open&createdBy=Ana%40SaudeBliss.test&page=2" });
 
+		// `status` chega como texto e sai como lista de um elemento: o filtro aceita
+		// vários, e normalizar na borda evita o repositório ter que decidir a forma.
 		expect(repository.list).toHaveBeenCalledWith(
-			expect.objectContaining({ status: "open", createdBy: "ana@saudebliss.test", page: 2 })
+			expect.objectContaining({ status: ["open"], createdBy: "ana@saudebliss.test", page: 2 })
 		);
+	});
+
+	it("aceita vários status separados por vírgula", async () => {
+		repository.list.mockResolvedValue({ items: [], total: 0 });
+
+		// A forma que a fila de conferência usa. Precisa atravessar a validação de
+		// query string do Fastify, que roda antes do middleware — é por isso que o
+		// schema declara `status` como string na entrada.
+		const response = await app.inject({ method: "GET", url: "/v1/requests?status=open,in_review" });
+
+		expect(response.statusCode).toBe(200);
+		expect(repository.list).toHaveBeenCalledWith(expect.objectContaining({ status: ["open", "in_review"] }));
+	});
+
+	it("recusa status desconhecido dentro da lista", async () => {
+		repository.list.mockResolvedValue({ items: [], total: 0 });
+
+		const response = await app.inject({ method: "GET", url: "/v1/requests?status=open,inventado" });
+
+		// Aceitar em silêncio devolveria só as abertas e pareceria funcionar — o
+		// pior desfecho possível para um filtro digitado errado.
+		expect(response.statusCode).toBe(400);
+		expect(response.json().error.code).toBe("VALIDATION_ERROR");
+		expect(repository.list).not.toHaveBeenCalled();
 	});
 
 	it("responde 503 no health quando o banco está inacessível", async () => {

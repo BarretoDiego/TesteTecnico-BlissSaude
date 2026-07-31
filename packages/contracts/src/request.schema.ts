@@ -110,6 +110,37 @@ export const ReviewRequestPayloadSchema = z
 export type ReviewRequestPayload = z.infer<typeof ReviewRequestPayloadSchema>;
 
 /**
+ * Filtro de status: um valor ou vários separados por vírgula.
+ *
+ * A entrada é **string** de propósito. O Fastify valida a query string contra o
+ * JSON Schema da rota antes de qualquer middleware, e `zodToJsonSchema` de um
+ * `transform` emite o lado de entrada — então declarar `z.string()` aqui é o que
+ * faz `?status=open,in_review` sobreviver à borda. Um `z.enum` emitiria uma lista
+ * fechada, e a forma composta seria rejeitada antes de chegar à validação real.
+ *
+ * `?status=open` continua funcionando: um valor só é lista de um elemento.
+ */
+export const RequestStatusFilterSchema = z
+	.string()
+	.describe(`Um status ou vários separados por vírgula (${REQUEST_STATUSES.join(", ")})`)
+	.transform((value, ctx) => {
+		const parts = value
+			.split(",")
+			.map((part) => part.trim())
+			.filter(Boolean);
+
+		const parsed = z.array(RequestStatusSchema).min(1).safeParse(parts);
+		if (!parsed.success) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: `Status deve ser um ou mais de: ${REQUEST_STATUSES.join(", ")}`,
+			});
+			return z.NEVER;
+		}
+		return parsed.data;
+	});
+
+/**
  * Query string de `GET /requests`.
  *
  * `page`/`pageSize` usam `coerce` porque query string sempre chega como texto.
@@ -119,7 +150,7 @@ export type ReviewRequestPayload = z.infer<typeof ReviewRequestPayloadSchema>;
 export const ListRequestsQueryPayloadSchema = z
 	.object({
 		createdBy: ActorSchema.optional(),
-		status: RequestStatusSchema.optional(),
+		status: RequestStatusFilterSchema.optional(),
 		priority: RequestPrioritySchema.optional(),
 		page: z.coerce.number().int().min(1, "Página deve ser maior ou igual a 1").default(1),
 		pageSize: z.coerce
@@ -130,7 +161,17 @@ export const ListRequestsQueryPayloadSchema = z
 			.default(20),
 	})
 	.strict();
+/** Query **depois** de validada — é o que service e repositório recebem. */
 export type ListRequestsQueryPayload = z.infer<typeof ListRequestsQueryPayloadSchema>;
+
+/**
+ * Query como o cliente a monta, antes da validação.
+ *
+ * Difere da de saída em `status` (string na entrada, lista na saída) e em
+ * `page`/`pageSize`, opcionais aqui e com default do outro lado. Quem chama a
+ * API tipa por este; quem a implementa, pelo de cima.
+ */
+export type ListRequestsQueryInput = z.input<typeof ListRequestsQueryPayloadSchema>;
 
 /** Parâmetro de rota compartilhado por `GET /requests/{id}` e `PATCH .../review`. */
 export const RequestIdParamsSchema = z

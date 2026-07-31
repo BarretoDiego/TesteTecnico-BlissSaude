@@ -9,7 +9,7 @@
 
 import type {
 	CreateRequestPayload,
-	ListRequestsQueryPayload,
+	ListRequestsQueryInput,
 	ListRequestsResult,
 	RequestDetail,
 	Request as RequestDto,
@@ -18,7 +18,8 @@ import type {
 import { apiClient } from "./instances";
 
 export class RequestsService {
-	static async list(query: Partial<ListRequestsQueryPayload> = {}): Promise<ListRequestsResult> {
+	/** Tipado pela **entrada** do schema: é o lado que o cliente monta. */
+	static async list(query: ListRequestsQueryInput = {}): Promise<ListRequestsResult> {
 		const { data } = await apiClient.get<ListRequestsResult>("/requests", { params: query });
 		return data;
 	}

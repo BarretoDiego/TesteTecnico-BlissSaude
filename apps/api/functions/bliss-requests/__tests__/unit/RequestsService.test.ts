@@ -106,7 +106,7 @@ describe("RequestsService.list", () => {
 
 	it("repassa os filtros recebidos ao repositório", async () => {
 		const repository = makeRepository({ list: jest.fn().mockResolvedValue({ items: [], total: 0 }) });
-		const query = makeListQuery({ createdBy: "ana.souza@saudebliss.test", status: "open" });
+		const query = makeListQuery({ createdBy: "ana.souza@saudebliss.test", status: ["open"] });
 
 		await new RequestsService(repository).list(query);
 

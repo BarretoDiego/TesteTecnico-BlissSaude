@@ -2,8 +2,8 @@
 
 import type { RequestDetail } from "@saude-bliss/contracts";
 import { REQUEST_EVENT_TYPE_LABELS } from "@saude-bliss/contracts";
-import Link from "next/link";
 import { use, useEffect, useState } from "react";
+import { BackLink } from "~/components/shared/BackLink";
 import { RequestIdBadge } from "~/components/shared/RequestIdBadge";
 import { PriorityBadge, StatusBadge } from "~/components/ui/Badge";
 import { formatDateTime } from "~/lib/utils";
@@ -58,9 +58,7 @@ export default function SolicitacaoDetalhePage({ params }: { params: Promise<{ i
 					{error.message}
 				</p>
 				<RequestIdBadge requestId={error.requestId} />
-				<Link href="/solicitacoes" className="text-sm text-slate-600 hover:underline">
-					← Voltar para a listagem
-				</Link>
+				<BackLink href="/solicitacoes" />
 			</div>
 		);
 	}
@@ -69,9 +67,7 @@ export default function SolicitacaoDetalhePage({ params }: { params: Promise<{ i
 
 	return (
 		<div className="space-y-6" data-testid="request-detail" data-request-id={detail.id}>
-			<Link href="/solicitacoes" className="text-sm text-slate-600 hover:underline">
-				← Voltar para a listagem
-			</Link>
+			<BackLink href="/solicitacoes" />
 
 			<div className="rounded-lg border border-slate-200 bg-white p-6">
 				<div className="flex flex-wrap items-start justify-between gap-4">

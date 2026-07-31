@@ -84,6 +84,27 @@ test.describe("conferência diária", () => {
 		expect(fromApi.reviewedBy).toBe(process.env.AUTOMATION_EMAIL ?? "daniel.morais@saudebliss.test");
 	});
 
+	test("cancelar a confirmação não registra a conferência", async ({
+		authenticated,
+		conferenciaPage,
+		api,
+		seedRequests,
+	}) => {
+		const [request] = await seedRequests({ count: 1 });
+		await conferenciaPage.goto();
+
+		await conferenciaPage.openConfirmationAndCancel(request!.id, "reviewed");
+
+		// A linha continua na fila...
+		await expect(conferenciaPage.rowById(request!.id)).toBeVisible();
+
+		// ...e, o que de fato importa, nada foi escrito. Sem consultar o oráculo o
+		// teste provaria só que a tela não mudou, não que a API não foi chamada.
+		const fromApi = await api.getRequest(request!.id);
+		expect(fromApi.status).toBe("open");
+		expect(fromApi.reviewedBy).toBeNull();
+	});
+
 	test("a conferência é registrada na trilha de auditoria", async ({
 		authenticated,
 		conferenciaPage,
@@ -121,9 +142,34 @@ test.describe("conferência diária", () => {
 		const seeded = await seedRequests({ count: 2 });
 		await conferenciaPage.goto();
 
-		const antes = await conferenciaPage.rows.count();
+		// O total, e não o número de linhas: a fila é paginada, e conferir uma
+		// solicitação puxa a próxima pendente para o lugar dela. Contar linhas
+		// afirmaria que a página encolhe, que é justamente o que não deve acontecer.
+		const antes = await conferenciaPage.pendingTotal();
 		await conferenciaPage.markAsReviewed(seeded[0]!.id);
 
-		await expect(conferenciaPage.rows).toHaveCount(antes - 1);
+		await expect
+			.poll(() => conferenciaPage.pendingTotal(), { message: "o total de pendentes deveria cair em um" })
+			.toBe(antes - 1);
+	});
+
+	test("a fila pagina e a segunda página traz solicitações diferentes", async ({
+		authenticated,
+		conferenciaPage,
+		seedRequests,
+	}) => {
+		await seedRequests({ count: 3 });
+		await conferenciaPage.goto({ pageSize: 2 });
+
+		const primeira = await conferenciaPage.snapshotRows();
+		expect(primeira).toHaveLength(2);
+
+		await conferenciaPage.goto({ pageSize: 2, page: 2 });
+		const segunda = await conferenciaPage.snapshotRows();
+
+		// Sem desempate estável na ordenação, uma linha pode aparecer nas duas
+		// páginas — defeito que só se manifesta com navegação por páginas.
+		const repetidas = segunda.filter((row) => primeira.some((outra) => outra.id === row.id));
+		expect(repetidas, "nenhuma solicitação deveria aparecer em duas páginas").toEqual([]);
 	});
 });

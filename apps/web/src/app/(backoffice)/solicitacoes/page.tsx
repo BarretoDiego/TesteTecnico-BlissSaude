@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { RequestsFilters } from "~/components/pages/RequestsFilters";
+import { RequestsPagination } from "~/components/pages/RequestsPagination";
 import { RequestsTable } from "~/components/pages/RequestsTable";
 import { RequestIdBadge } from "~/components/shared/RequestIdBadge";
 import { ApiError } from "~/services/instances";
@@ -87,7 +88,12 @@ function SolicitacoesContent() {
 					Carregando…
 				</p>
 			) : (
-				<RequestsTable items={result?.items ?? []} />
+				<>
+					<RequestsTable items={result?.items ?? []} />
+					{/* Só há o que navegar depois da primeira resposta — a paginação vem
+					    da API, não é calculada aqui. */}
+					{result && <RequestsPagination pagination={result.pagination} />}
+				</>
 			)}
 		</div>
 	);
