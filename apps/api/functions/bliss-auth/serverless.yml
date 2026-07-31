@@ -1,0 +1,60 @@
+# =============================================================================
+# bliss-auth — Serverless Framework
+#
+# Papel deste arquivo: emulação local e empacotamento. Quem provisiona é o
+# Terraform — ver docs/adr/0002.
+# =============================================================================
+
+service: bliss-auth
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${env:AWS_REGION, 'us-east-1'}
+  stage: ${opt:stage, 'local'}
+  # Mais memória que os serviços de leitura: a derivação da senha é memory-hard
+  # de propósito (scrypt com N=2^15 usa ~33MB) e, em Lambda, CPU escala junto
+  # com memória — subdimensionar aqui torna o login lento sem torná-lo mais barato.
+  memorySize: 1024
+  timeout: 15
+  logRetentionInDays: 7
+  environment:
+    BLISS_ENV: ${self:provider.stage}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'info'}
+    API_PREFIX: ${env:API_PREFIX, '/v1'}
+    SERVICE_NAME: bliss-auth
+    DATABASE_URL: ${env:DATABASE_URL, ''}
+    DB_SECRET_ID: ${env:DB_SECRET_ID, ''}
+    DB_POOL_MAX: ${env:DB_POOL_MAX, '1'}
+    JWT_SECRET: ${env:JWT_SECRET, ''}
+    JWT_SECRET_ID: ${env:JWT_SECRET_ID, ''}
+    JWT_ISSUER: ${env:JWT_ISSUER, 'saude-bliss'}
+    JWT_AUDIENCE: ${env:JWT_AUDIENCE, 'saude-bliss-api'}
+    AWS_ENDPOINT_URL: ${env:AWS_ENDPOINT_URL, ''}
+
+package:
+  artifact: dist/function.zip
+
+functions:
+  api:
+    handler: app.lambdaHandler
+    description: Microserviço bliss-auth — todas as rotas de /v1/auth
+    events:
+      - http:
+          path: /auth
+          method: any
+          cors: true
+      - http:
+          path: /auth/{proxy+}
+          method: any
+          cors: true
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 4003
+    lambdaPort: 5003
+    noPrependStageInUrl: true

@@ -7,3 +7,4 @@
 
 export * from "./enums.schema";
 export * from "./requests.schema";
+export * from "./users.schema";

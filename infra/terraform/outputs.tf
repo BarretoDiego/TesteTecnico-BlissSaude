@@ -17,6 +17,7 @@ output "service_urls" {
   value = {
     bliss-requests = "${local.invoke_url}${var.api_prefix}/${module.bliss_requests.route_prefix}"
     bliss-reviews  = "${local.invoke_url}${var.api_prefix}/${module.bliss_reviews.route_prefix}"
+    bliss-auth     = "${local.invoke_url}${var.api_prefix}/${module.bliss_auth.route_prefix}"
   }
 }
 
@@ -28,6 +29,7 @@ output "lambda_functions" {
     bliss-requests   = module.bliss_requests.function_name
     bliss-reviews    = module.bliss_reviews.function_name
     bliss-authorizer = module.bliss_authorizer.function_name
+    bliss-auth       = module.bliss_auth.function_name
   }
 }
 
@@ -37,6 +39,7 @@ output "log_groups" {
     bliss-requests   = module.bliss_requests.log_group_name
     bliss-reviews    = module.bliss_reviews.log_group_name
     bliss-authorizer = module.bliss_authorizer.log_group_name
+    bliss-auth       = module.bliss_auth.log_group_name
   }
 }
 

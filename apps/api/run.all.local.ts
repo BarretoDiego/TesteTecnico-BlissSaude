@@ -25,6 +25,7 @@ config({ path: [".env.local", ".env", "../../.env"] });
 import { createAggregatedApp, runLocal } from "@saude-bliss/core";
 import { closeDb } from "@saude-bliss/database";
 
+import { service as blissAuth } from "./functions/bliss-auth/src/service";
 import { service as blissRequests } from "./functions/bliss-requests/src/service";
 import { service as blissReviews } from "./functions/bliss-reviews/src/service";
 
@@ -35,7 +36,7 @@ import { service as blissReviews } from "./functions/bliss-reviews/src/service";
  * a Lambda — nome, prefixo, rotas e sonda de saúde vêm de uma fonte só. Um
  * serviço novo entra aqui e no `serverless.yml` dele.
  */
-const SERVICES = [blissRequests, blissReviews];
+const SERVICES = [blissAuth, blissRequests, blissReviews];
 
 async function main(): Promise<void> {
 	await runLocal({

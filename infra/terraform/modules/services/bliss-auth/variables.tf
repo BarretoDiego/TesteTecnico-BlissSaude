@@ -1,0 +1,50 @@
+variable "project_name" { type = string }
+variable "env_suffix" { type = string }
+variable "region" { type = string }
+variable "account_id" { type = string }
+variable "use_localstack" { type = bool }
+
+variable "rest_api_id" { type = string }
+variable "root_resource_id" {
+  type        = string
+  description = "Recurso do prefixo de versão (/v1) — pai do prefixo de domínio."
+}
+
+variable "authorizer_id" {
+  type        = string
+  default     = ""
+  description = "Id do authorizer. Vazio deixa as rotas do serviço públicas."
+}
+
+variable "package_dir" {
+  type        = string
+  description = "Diretório do microserviço, de onde sai dist/function.zip."
+}
+
+variable "environment_variables" {
+  type        = map(string)
+  default     = {}
+  description = "Variáveis comuns da plataforma. O módulo acrescenta as suas."
+}
+
+variable "secret_arn" { type = string }
+variable "lambda_runtime" { type = string }
+variable "logs_retention_in_days" { type = number }
+
+
+variable "jwt_secret_id" {
+  type        = string
+  description = <<-EOT
+    Id do segredo com a chave de assinatura, criado pelo módulo do authorizer.
+
+    O acoplamento é deliberado: `bliss-auth` assina e `bliss-authorizer` valida
+    com a **mesma** chave. Cada um lendo de uma origem própria seria o modo mais
+    silencioso de quebrar a autenticação — todo token emitido viraria 401 sem
+    nenhuma indicação de causa.
+  EOT
+}
+
+variable "jwt_secret_arn" {
+  type        = string
+  description = "ARN do mesmo segredo, para a política de leitura da função."
+}

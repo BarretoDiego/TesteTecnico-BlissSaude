@@ -14,8 +14,8 @@ config({ path: [".env.local", ".env"] });
 
 export default defineConfig({
 	dialect: "postgresql",
-	schema: "./src/db/schema/index.ts",
-	out: "./src/db/migrations",
+	schema: "./src/schema/index.ts",
+	out: "./src/migrations",
 	dbCredentials: {
 		url: process.env.DATABASE_URL ?? "postgresql://saudebliss:saudebliss@localhost:5433/saudebliss",
 	},

@@ -30,7 +30,7 @@ const FUNCTIONS_DIR = join(__dirname, "..", "functions");
 const TERRAFORM_SERVICES_DIR = join(__dirname, "..", "..", "..", "infra", "terraform", "modules", "services");
 
 /** Serviços verificados. Um serviço novo entra aqui. */
-const SERVICES = ["bliss-requests", "bliss-reviews"] as const;
+const SERVICES = ["bliss-requests", "bliss-reviews", "bliss-auth"] as const;
 
 /** `/:id` (Fastify) e `/{id}` (API Gateway) descrevem o mesmo parâmetro. */
 function toApiGatewayPath(path: string): string {

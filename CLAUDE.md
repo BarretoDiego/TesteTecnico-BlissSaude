@@ -18,6 +18,8 @@ saude-bliss/
 │   └── testing/                    # factories e duplos das suítes
 ├── apps/api/
 │   ├── functions/
+│   │   ├── bliss-auth/             # domínio /auth     — autenticação (emite tokens)
+│   │   ├── bliss-authorizer/       # sem rotas         — authorizer do API Gateway
 │   │   ├── bliss-requests/         # domínio /requests — abertura e consulta
 │   │   └── bliss-reviews/          # domínio /reviews  — conferência e auditoria
 │   └── run.all.local.ts            # sobe todos num processo só (desenvolvimento)
@@ -81,6 +83,8 @@ O modo agregado existe para conveniência; o isolado é o que reproduz produçã
 - Nada em `packages/` pode conhecer um domínio. Se um símbolo precisa saber o que é uma "solicitação", ele pertence ao microserviço.
 - `BlissLogger` lê `process.env` direto, sem passar pelo `EnvService`. É o único módulo com essa licença: ele é a base de `WithLogging` e portanto de `BaseService`, então importar o serviço de configuração — que também é um `BaseService` — criaria ciclo. Logging precisa existir antes de qualquer serviço.
 - **Toda** classe de serviço estende `BaseService`, inclusive `EnvService`, `SecretsService` e as integrações AWS. Serviço sem logging é ponto cego em produção.
+- **`bliss-auth` autentica, `bliss-authorizer` autoriza.** O primeiro troca credencial por token; o segundo valida o token na borda. São serviços distintos porque têm perfis opostos: autenticação é chamada uma vez por sessão e faz trabalho caro de propósito (derivar senha leva ~100ms — é esse custo que torna força bruta impraticável); o authorizer entra no caminho de toda requisição e precisa ser barato. Os dois compartilham a chave de assinatura via `SigningKeyService` no core — cada um resolvendo a chave do seu jeito seria o modo mais silencioso de quebrar a autenticação.
+- Resposta de login é **indistinguível** entre e-mail inexistente e senha errada, e a senha é derivada mesmo sem usuário para igualar o tempo de resposta. Distinguir os casos — por código, mensagem ou latência — entrega um oráculo de enumeração de contas.
 - Integração AWS que é efeito colateral (EventBridge, SQS, CloudWatch) **não lança**: falha ali não pode derrubar operação de negócio já persistida. Vira log de erro, que é o gancho do alarme.
 
 ### Responsabilidades

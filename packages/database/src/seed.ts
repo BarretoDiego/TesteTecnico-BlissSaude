@@ -16,9 +16,11 @@ import { config } from "dotenv";
 
 config({ path: [".env.local", ".env"] });
 
-import type { RequestPriority, RequestStatus } from "@saude-bliss/contracts";
+import type { RequestPriority, RequestStatus, UserRole } from "@saude-bliss/contracts";
+import { passwordService } from "@saude-bliss/core";
 import { closeDb, getDb } from "./client";
 import { requestEvents, requests } from "./schema/requests.schema";
+import { users } from "./schema/users.schema";
 
 interface SeedRequest {
 	title: string;
@@ -96,6 +98,32 @@ const SEED: readonly SeedRequest[] = [
 	},
 ];
 
+/**
+ * Usuários de demonstração.
+ *
+ * Senha única e óbvia de propósito: é ambiente local, e uma senha "esperta" só
+ * faria o avaliador perder tempo procurando onde ela está escrita. O hash é
+ * derivado no seed, nunca versionado — commitar hash de senha, mesmo de
+ * desenvolvimento, ensina o hábito errado.
+ */
+const SEED_PASSWORD = "saudebliss123";
+
+interface SeedUser {
+	email: string;
+	name: string;
+	roles: UserRole[];
+	active?: boolean;
+}
+
+const SEED_USERS: readonly SeedUser[] = [
+	{ email: "daniel.morais@saudebliss.test", name: "Daniel Morais", roles: ["admin", "reviewer"] },
+	{ email: "ana.souza@saudebliss.test", name: "Ana Souza", roles: ["requester"] },
+	{ email: "bruno.lima@saudebliss.test", name: "Bruno Lima", roles: ["requester"] },
+	{ email: "carla.mendes@saudebliss.test", name: "Carla Mendes", roles: ["reviewer"] },
+	// Desativado de propósito: exercita o 403 do login sem precisar mexer no banco.
+	{ email: "inativo@saudebliss.test", name: "Usuário Inativo", roles: ["requester"], active: false },
+];
+
 async function main(): Promise<void> {
 	const db = await getDb();
 
@@ -104,6 +132,23 @@ async function main(): Promise<void> {
 	console.log("limpando dados existentes...");
 	await db.delete(requestEvents);
 	await db.delete(requests);
+	// `refresh_tokens` cai junto pelo cascade da FK.
+	await db.delete(users);
+
+	console.log(`inserindo ${SEED_USERS.length} usuários...`);
+	// A derivação é intencionalmente lenta (~100ms cada), então roda em paralelo:
+	// serializar cinco delas somaria meio segundo sem nenhum motivo.
+	const hashes = await Promise.all(SEED_USERS.map(() => passwordService.hash(SEED_PASSWORD)));
+
+	await db.insert(users).values(
+		SEED_USERS.map((user, index) => ({
+			email: user.email,
+			name: user.name,
+			roles: user.roles,
+			active: user.active ?? true,
+			passwordHash: hashes[index]!,
+		}))
+	);
 
 	console.log(`inserindo ${SEED.length} solicitações...`);
 	for (const item of SEED) {
@@ -155,6 +200,7 @@ async function main(): Promise<void> {
 	}, {});
 
 	console.log("seed concluído:", byStatus);
+	console.log(`usuários: ${SEED_USERS.length} (senha de todos: ${SEED_PASSWORD})`);
 	await closeDb();
 }
 

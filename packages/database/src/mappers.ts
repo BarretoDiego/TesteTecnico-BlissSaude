@@ -10,8 +10,9 @@
  * As queries seguem sendo de cada serviço: mapper é schema, query é domínio.
  */
 
-import type { Request as RequestDto, RequestEvent as RequestEventDto } from "@saude-bliss/contracts";
+import type { AuthenticatedUser, Request as RequestDto, RequestEvent as RequestEventDto } from "@saude-bliss/contracts";
 import type { RequestEventRow, RequestRow } from "./schema/requests.schema";
+import type { UserRow } from "./schema/users.schema";
 
 /**
  * `Date` vira string ISO já aqui, no limite da persistência, para que nenhuma
@@ -43,5 +44,20 @@ export function toRequestEventDto(row: RequestEventRow): RequestEventDto {
 		actor: row.actor,
 		traceId: row.traceId,
 		createdAt: row.createdAt.toISOString(),
+	};
+}
+
+/**
+ * Usuário na forma pública.
+ *
+ * O `passwordHash` fica de fora **por construção**: o tipo de saída não tem o
+ * campo, então expô-lo por engano vira erro de compilação e não incidente.
+ */
+export function toAuthenticatedUser(row: UserRow): AuthenticatedUser {
+	return {
+		id: row.id,
+		email: row.email,
+		name: row.name,
+		roles: row.roles,
 	};
 }

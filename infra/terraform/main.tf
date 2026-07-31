@@ -76,6 +76,8 @@ resource "aws_api_gateway_deployment" "this" {
       module.bliss_requests.integration_ids,
       module.bliss_reviews.resource_ids,
       module.bliss_reviews.integration_ids,
+      module.bliss_auth.resource_ids,
+      module.bliss_auth.integration_ids,
       # O authorizer entra no hash: trocá-lo muda a autorização dos métodos e
       # exige redeploy do stage para valer.
       var.enable_authorizer ? module.bliss_authorizer.authorizer_id : "sem-authorizer",
@@ -86,7 +88,7 @@ resource "aws_api_gateway_deployment" "this" {
     create_before_destroy = true
   }
 
-  depends_on = [module.bliss_requests, module.bliss_reviews]
+  depends_on = [module.bliss_requests, module.bliss_reviews, module.bliss_auth]
 }
 
 # Stage separado do deployment: o argumento `stage_name` embutido no
@@ -149,6 +151,26 @@ module "bliss_authorizer" {
   environment_variables  = local.common_environment
   jwt_signing_key        = var.jwt_signing_key
   result_ttl_in_seconds  = var.authorizer_cache_ttl
+}
+
+module "bliss_auth" {
+  source = "./modules/services/bliss-auth"
+
+  project_name           = var.project_name
+  env_suffix             = var.env_suffix
+  region                 = var.region
+  account_id             = data.aws_caller_identity.current.account_id
+  use_localstack         = var.use_localstack
+  rest_api_id            = aws_api_gateway_rest_api.this.id
+  root_resource_id       = aws_api_gateway_resource.version.id
+  authorizer_id          = var.enable_authorizer ? module.bliss_authorizer.authorizer_id : ""
+  package_dir            = "${local.functions_dir}/bliss-auth"
+  lambda_runtime         = var.lambda_runtime
+  logs_retention_in_days = var.logs_retention_in_days
+  environment_variables  = local.common_environment
+  secret_arn             = module.database.secret_arn
+  jwt_secret_id          = module.bliss_authorizer.jwt_secret_id
+  jwt_secret_arn         = module.bliss_authorizer.jwt_secret_arn
 }
 
 module "bliss_requests" {

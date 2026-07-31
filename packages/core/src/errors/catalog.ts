@@ -33,6 +33,23 @@ export const ERROR_CATALOG: Readonly<Record<ErrorCode, ErrorDefinition>> = {
 		httpStatus: 409,
 		message: "Esta solicitação já foi conferida",
 	},
+	INVALID_CREDENTIALS: {
+		httpStatus: 401,
+		/**
+		 * Mensagem genérica de propósito: distinguir "e-mail não existe" de "senha
+		 * errada" entrega um oráculo de enumeração de contas — quem ataca descobre
+		 * quais e-mails estão cadastrados sem precisar de nenhuma senha.
+		 */
+		message: "E-mail ou senha inválidos",
+	},
+	INVALID_REFRESH_TOKEN: {
+		httpStatus: 401,
+		message: "Sessão inválida ou expirada. Faça login novamente",
+	},
+	USER_INACTIVE: {
+		httpStatus: 403,
+		message: "Usuário desativado",
+	},
 	DATABASE_UNAVAILABLE: {
 		httpStatus: 503,
 		message: "Banco de dados indisponível no momento",

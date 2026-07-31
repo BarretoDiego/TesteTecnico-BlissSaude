@@ -51,6 +51,10 @@ export { WithLogging } from "./common/WithLogging";
 export { EnvService, envService, type AppEnv } from "./config/EnvService";
 export { SecretsService, secretsService } from "./config/SecretsService";
 
+// Segurança
+export { PasswordService, passwordService } from "./security/PasswordService";
+export { SigningKeyService, signingKeyService } from "./security/SigningKeyService";
+
 // Erros
 export { BlissError, type BlissErrorOptions } from "./errors/BlissError";
 export { ERROR_CATALOG, type ErrorDefinition } from "./errors/catalog";
