@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/**
+ * O scaffold do Next traz um bloco `prefers-color-scheme: dark` que fixa
+ * background e foreground em variáveis próprias. Como as telas usam as escalas
+ * do Tailwind (`bg-slate-50`, `text-slate-900`), esse bloco entrava em conflito
+ * e deixava o texto quase invisível em quem tem o sistema em modo escuro.
+ *
+ * A decisão aqui é assumir tema claro único: backoffice operacional é usado sob
+ * luz de escritório e a paleta foi escolhida para contraste nessa condição.
+ * Suportar os dois temas seria trabalho real — revisar cada `ring`, `border` e
+ * badge — e não meia dúzia de variáveis.
+ */
+@theme {
+	--color-background: #f8fafc;
+	--color-foreground: #0f172a;
+}
+
+html {
+	color-scheme: light;
+}
+
+body {
+	background-color: var(--color-background);
+	color: var(--color-foreground);
+	font-family:
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		"Segoe UI",
+		Roboto,
+		sans-serif;
+}
