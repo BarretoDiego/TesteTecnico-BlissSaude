@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"noEmit": true,
+		"isolatedModules": true,
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"paths": {
+			"@saude-bliss/contracts": ["../../packages/contracts/src/index.ts"],
+			"~/*": ["./src/*"]
+		},
+		"types": ["node"]
+	},
+	"include": ["src/**/*.ts", "tests/**/*.ts", "playwright.config.ts"]
+}

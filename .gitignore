@@ -47,3 +47,7 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# playwright
+apps/automation/reports/
+apps/automation/test-results/

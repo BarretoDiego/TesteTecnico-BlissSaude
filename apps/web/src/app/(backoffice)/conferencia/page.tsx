@@ -76,7 +76,7 @@ export default function ConferenciaPage() {
 	);
 
 	return (
-		<div className="space-y-6">
+		<div className="space-y-6" data-testid="conferencia" data-loading={String(loading)}>
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-2xl font-semibold">Conferência</h1>

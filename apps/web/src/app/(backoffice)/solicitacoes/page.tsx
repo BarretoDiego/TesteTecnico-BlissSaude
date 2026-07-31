@@ -36,8 +36,24 @@ function SolicitacoesContent() {
 		void load();
 	}, [load]);
 
+	/**
+	 * Sinal de prontidão para a automação.
+	 *
+	 * `data-loading` sozinho não basta: numa navegação por filtro a tabela
+	 * anterior continua na tela enquanto a nova consulta corre, e um teste que
+	 * lesse ali pegaria o resultado antigo. `data-query` diz **qual** consulta os
+	 * dados exibidos representam, então a espera é por conteúdo correto e não só
+	 * por ausência de carregamento.
+	 */
+	const query = searchParams.toString();
+
 	return (
-		<div className="space-y-6">
+		<div
+			className="space-y-6"
+			data-testid="requests-list"
+			data-loading={String(loading)}
+			data-query={loading ? "" : query}
+		>
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-2xl font-semibold">Solicitações</h1>
