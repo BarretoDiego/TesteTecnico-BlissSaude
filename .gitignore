@@ -51,3 +51,4 @@ pnpm-debug.log*
 # playwright
 apps/automation/reports/
 apps/automation/test-results/
+coverage/
