@@ -27,6 +27,16 @@ module.exports = {
 	clearMocks: true,
 	restoreMocks: true,
 	setupFiles: ["<rootDir>/__tests__/.jest/setup.ts"],
+	/**
+	 * 30s, e não os 5s padrão.
+	 *
+	 * O `beforeAll` das suítes de integração constrói a aplicação inteira, o que
+	 * faz o ts-jest compilar `@saude-bliss/core` e o Fastify na primeira vez. Em
+	 * máquina de desenvolvimento isso leva ~2s e cabe no padrão; no runner
+	 * compartilhado do CI passa de 5s e o hook estoura — com uma mensagem de
+	 * timeout que não indica compilação como causa, e que só aparece no CI.
+	 */
+	testTimeout: 30_000,
 	collectCoverageFrom: ["src/**/*.ts", "!src/index.ts", "!src/app/**"],
 	coverageThreshold: { global: { branches: 95, functions: 95, lines: 95, statements: 95 } },
 };
