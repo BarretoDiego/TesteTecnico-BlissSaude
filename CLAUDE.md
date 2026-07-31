@@ -1,37 +1,67 @@
 # CLAUDE.md — Diretrizes do projeto
 
-> Última atualização: 2026-07-30
+> Última atualização: 2026-07-31
 
 Guia de padrões para agentes e pessoas trabalhando neste repositório. As regras aqui **sobrepõem** comportamento padrão.
 
 ## 🏗️ Arquitetura
 
-Monorepo pnpm com quatro pacotes:
-
-| Pacote               | Papel                                                                  |
-| -------------------- | ---------------------------------------------------------------------- |
-| `packages/contracts` | Enums + schemas Zod + tipos compartilhados. **Fonte única da verdade** |
-| `apps/api`           | Fastify sobre AWS Lambda (API Gateway REST)                            |
-| `apps/web`           | Backoffice Next.js (App Router)                                        |
-| `apps/automation`    | Suíte Playwright de conferência operacional                            |
-| `infra/terraform`    | IaC — única coisa que cria ou muda recursos                            |
-
-### Estrutura da API
+Monorepo pnpm. **Um microserviço por domínio, uma Lambda por microserviço**; tudo que é compartilhado vive fora deles, em `packages/`.
 
 ```
-apps/api/src/
-├── app.ts              # Fastify + plugins + hooks + lambdaHandler
-├── router/index.ts     # SOMENTE a tabela de rotas
-├── controllers/        # {Domain}Controller.ts — orquestração fina
-├── middlewares/        # {Action}Middleware.ts — Zod + regras de negócio
-├── services/           # {Domain}Service.ts — regras de domínio
-│                       # {Domain}DatabaseService.ts — acesso a dados
-├── common/             # WithLogging, BaseController, BaseService, BaseRepository
-├── errors/             # SBError, catálogo de códigos, DefaultErroHandler
-├── utils/              # requestContext, responseEnvelope, SBLogger
-├── config/             # EnvService, SecretsService
-└── db/                 # client Drizzle, schema, migrations, seed
+saude-bliss/
+├── packages/                       # compartilhado — nenhum pacote aqui conhece domínio
+│   ├── contracts/                  # enums, schemas Zod, envelope. Fonte única da verdade
+│   ├── core/                       # factory de app, logging, erros, contexto, config, Lambda
+│   ├── database/                   # schema Drizzle, client, migrations, seed, mappers
+│   └── testing/                    # factories e duplos das suítes
+├── apps/api/
+│   ├── functions/
+│   │   ├── bliss-requests/         # domínio: abertura e consulta de solicitações
+│   │   └── bliss-reviews/          # domínio: conferência e trilha de auditoria
+│   └── run.all.local.ts            # sobe todos num processo só (desenvolvimento)
+├── apps/web/                       # backoffice Next.js
+├── apps/automation/                # suíte Playwright
+└── infra/terraform/                # IaC — única coisa que cria ou muda recursos
 ```
+
+**Convenção de nome:** `bliss-<domínio>`, no plural (`bliss-requests`, `bliss-reviews`, e adiante `bliss-users`, `bliss-companies`). O nome é usado como está no diretório, no pacote pnpm, na função Lambda, no log group e no `serviceName` dos logs — um nome, um serviço, rastreável ponta a ponta.
+
+### Estrutura de um microserviço
+
+```
+apps/api/functions/bliss-<domínio>/
+├── src/
+│   ├── app.ts                  # createApp(...) + createLambdaHandler — só declara o que é do domínio
+│   ├── router/index.ts         # SOMENTE a tabela de rotas
+│   ├── controllers/            # {Domain}Controller.ts — orquestração fina
+│   ├── middlewares/            # {Action}Middleware.ts — Zod + validação de entrada
+│   └── services/               # {Domain}Service.ts       — regras de domínio
+│                               # {Domain}DatabaseService.ts — acesso a dados
+├── __tests__/{unit,integration,contract,e2e,.jest}/
+├── run.local.ts                # sobe só este domínio, na porta dele
+├── build.js                    # esbuild → dist/function.zip
+├── serverless.yml              # emulação local + packaging
+├── jest.config.js  package.json  tsconfig.json
+```
+
+Dentro de `src/` os imports são **relativos**; para fora, sempre pelo nome do pacote (`@saude-bliss/core`). Não há alias `@/`: um único processo (`run.all.local.ts`) carrega os dois serviços e não conseguiria resolver dois mapeamentos `@/*` distintos.
+
+### Como rodar
+
+| Comando                                         | O que faz                                                              |
+| ----------------------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm --filter @saude-bliss/api dev`            | todos os domínios em um processo, porta 4000 — loop de desenvolvimento |
+| `pnpm --filter @saude-bliss/bliss-requests dev` | só solicitações, porta 4001                                            |
+| `pnpm --filter @saude-bliss/bliss-reviews dev`  | só conferência, porta 4002                                             |
+
+O modo agregado existe para conveniência; o isolado é o que reproduz produção. `PORT` vale só para o agregado — o isolado usa a porta fixa do serviço, sobrescrevível por `SERVICE_PORT`.
+
+### Fronteiras
+
+- `packages/core` **não pode** importar `packages/database`: plataforma não depende de persistência. Um serviço sem banco não deve carregar o driver do Postgres. É por isso que `runLocal` recebe `onShutdown` em vez de importar `closeDb`.
+- O **schema** é compartilhado (uma tabela, uma definição), as **queries** não: cada serviço tem seu `*DatabaseService` com apenas as operações do seu domínio.
+- Nada em `packages/` pode conhecer um domínio. Se um símbolo precisa saber o que é uma "solicitação", ele pertence ao microserviço.
 
 ### Responsabilidades
 
@@ -86,7 +116,7 @@ class RequestsController extends BaseController {
 			this.logStart("RequestsController", "create", "criando solicitação");
 			const result = await this.requests.create(req.body);
 			this.logSuccess("RequestsController", "create", "solicitação criada", { id: result.id });
-			return sbSuccess(res, req, { data: result, statusCode: 201 });
+			return blissSuccess(res, req, { data: result, statusCode: 201 });
 		} catch (error) {
 			this.logError("RequestsController", "create", "falha ao criar solicitação", { error });
 			return sbErrorHandler(res, req, error, { module: "RequestsController", action: "create" });
@@ -112,7 +142,7 @@ Toda resposta, sem exceção:
 
 ### Erros
 
-`SBError.from("CODE", { details })` a partir do catálogo em `errors/catalog.ts`, que mapeia código → `httpStatus` + mensagem PT-BR. Nunca lançar `Error` cru em código de domínio.
+`BlissError.from("CODE", { details })` a partir do catálogo em `errors/catalog.ts`, que mapeia código → `httpStatus` + mensagem PT-BR. Nunca lançar `Error` cru em código de domínio.
 
 ### Logging
 
@@ -135,14 +165,14 @@ O logger lê o `requestId` do `AsyncLocalStorage`, **não** de um parâmetro. Po
 
 ## 🧪 Testes
 
-Layout `apps/api/__tests__/{unit,integration,e2e,contract,helpers}`:
+Layout `<pacote>/__tests__/{unit,integration,e2e,contract}` — os testes ficam junto do código que testam. Testes do runtime compartilhado em `packages/core/__tests__`, testes de domínio em `apps/api/functions/bliss-*/__tests__`. Factories e duplos vêm de `@saude-bliss/testing`.
 
 - **unit** — tudo mockado, sem I/O.
 - **integration** — `app.inject()`, repository mockado.
 - **e2e** — Postgres real com migrations aplicadas.
 - **contract** — snapshot do `zodToJsonSchema`; pega drift entre front e API.
 
-Cobertura: **95%** em `middlewares/`, `services/`, `utils/`, `errors/`; **90%** global. Exclusões: `app.ts`, `router/index.ts`, `swagger.ts`, `types/**`.
+Cobertura: **95%** em `middlewares/`, `services/`, `utils/`, `errors/`; **90%** global. Exclusões: `app.ts`, `router/index.ts`, `types/**`, barrels `index.ts`.
 
 ## 📝 Convenções
 
@@ -154,8 +184,8 @@ Cobertura: **95%** em `middlewares/`, `services/`, `utils/`, `errors/`; **90%** 
 
 ## 🚨 Armadilhas conhecidas
 
-- **`pg` no esbuild**: `pg-native` e `cloudflare:sockets` não resolvem — ver os `external` em `apps/api/build.js`. Falha aqui aparece como crash de cold start dentro do LocalStack, que é péssimo lugar para debugar. O build faz smoke check do bundle de propósito.
-- **Pool em Lambda**: singleton em escopo de módulo com `max: 1`. Nunca `pool.end()` por request. `callbackWaitsForEmptyEventLoop: false`.
+- **`pg` no esbuild**: `pg-native` e `cloudflare:sockets` não resolvem — ver os `external` no `build.js` de cada microserviço. Falha aqui aparece como crash de cold start dentro do LocalStack, que é péssimo lugar para debugar. O build faz smoke check do bundle de propósito.
+- **Pool em Lambda**: singleton em escopo de módulo (`packages/database/src/client.ts`) com `max: 1`. Nunca `pool.end()` por request. `callbackWaitsForEmptyEventLoop: false`.
 - **`enterWith` do AsyncLocalStorage** vaza o store entre invocações em container reutilizado — por isso `lambdaHandler` envolve tudo em `als.run(...)`.
 - **Next 16**: `params` e `searchParams` são `Promise` e precisam de `await`.
 - **`awslocal` não serve aqui** — ele assume a porta 4566. Use `scripts/localstack/aws.sh`.

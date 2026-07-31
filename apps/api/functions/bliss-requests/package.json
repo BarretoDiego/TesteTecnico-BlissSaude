@@ -1,0 +1,45 @@
+{
+	"name": "@saude-bliss/bliss-requests",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Microserviço de solicitações — abertura e consulta",
+	"main": "src/app.ts",
+	"scripts": {
+		"dev": "BLISS_ENV=local ts-node-dev -r tsconfig-paths/register --respawn --transpile-only --ignore-watch node_modules run.local.ts",
+		"build": "BLISS_ENV=local node build.js",
+		"build:dev": "BLISS_ENV=dev node build.js",
+		"build:stage": "BLISS_ENV=stage node build.js",
+		"build:prod": "BLISS_ENV=prod node build.js",
+		"package": "serverless package --stage local",
+		"offline": "serverless offline --stage local",
+		"test": "jest",
+		"test:unit": "jest --selectProjects unit",
+		"test:integration": "jest --selectProjects integration",
+		"test:contract": "jest --selectProjects contract",
+		"test:e2e": "jest --selectProjects e2e",
+		"test:coverage": "jest --coverage",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@saude-bliss/contracts": "workspace:*",
+		"@saude-bliss/core": "workspace:*",
+		"@saude-bliss/database": "workspace:*",
+		"drizzle-orm": "^0.45.2",
+		"fastify": "^5.2.1",
+		"zod": "^3.25.76"
+	},
+	"devDependencies": {
+		"@types/jest": "^29.5.14",
+		"@types/node": "^22.10.7",
+		"dotenv": "^16.4.7",
+		"esbuild": "^0.24.2",
+		"jest": "^29.7.0",
+		"serverless": "3.40.0",
+		"serverless-offline": "13.10.0",
+		"ts-jest": "^29.2.5",
+		"ts-node": "^10.9.2",
+		"ts-node-dev": "^2.0.0",
+		"tsconfig-paths": "^4.2.0",
+		"typescript": "^5.7.3"
+	}
+}
