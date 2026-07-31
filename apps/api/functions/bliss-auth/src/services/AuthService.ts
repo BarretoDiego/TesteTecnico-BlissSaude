@@ -19,7 +19,7 @@ import {
 	type SigningKeyService,
 } from "@saude-bliss/core";
 import { SignJWT, jwtVerify } from "jose";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { AuthRepository } from "../repositories/AuthRepository";
 
 const MODULE = "AuthService";
@@ -245,12 +245,4 @@ export class AuthService extends BaseService {
 	async checkDatabase(): Promise<boolean> {
 		return this.repository.ping();
 	}
-}
-
-/** Comparação em tempo constante de dois tokens opacos. Exposto para os testes. */
-export function constantTimeEquals(a: string, b: string): boolean {
-	const bufferA = Buffer.from(a);
-	const bufferB = Buffer.from(b);
-	if (bufferA.length !== bufferB.length) return false;
-	return timingSafeEqual(bufferA, bufferB);
 }

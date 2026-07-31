@@ -17,7 +17,6 @@ import {
 	users,
 	type Database,
 	type NewRefreshTokenRow,
-	type UserRow,
 } from "@saude-bliss/database";
 import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
 
@@ -186,13 +185,5 @@ export class AuthRepository extends BaseRepository {
 			.from(users)
 			.limit(1);
 		return true;
-	}
-
-	/** Exposto para o seed e para testes — nunca usado em fluxo de requisição. */
-	async insertUser(row: Omit<UserRow, "id" | "createdAt" | "updatedAt" | "lastLoginAt">): Promise<AuthenticatedUser> {
-		const db = await this.db();
-		const [inserted] = await db.insert(users).values(row).returning();
-		if (!inserted) throw new Error("insert de usuário não retornou linha");
-		return toAuthenticatedUser(inserted);
 	}
 }

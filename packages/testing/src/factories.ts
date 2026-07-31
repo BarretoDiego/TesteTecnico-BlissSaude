@@ -11,7 +11,6 @@
 import type {
 	CreateRequestPayload,
 	ListRequestsQueryPayload,
-	RequestDetail,
 	Request as RequestDto,
 	RequestEvent,
 	ReviewRequestPayload,
@@ -69,11 +68,6 @@ export function makeEvent(overrides: Partial<RequestEvent> = {}): RequestEvent {
 		createdAt: "2026-07-30T12:00:00.000Z",
 		...overrides,
 	};
-}
-
-export function makeRequestDetail(overrides: Partial<RequestDetail> = {}): RequestDetail {
-	const request = makeRequest(overrides);
-	return { ...request, events: [makeEvent({ requestId: request.id })], ...overrides };
 }
 
 /** Query já com os defaults que o Zod aplicaria. */

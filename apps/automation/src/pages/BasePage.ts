@@ -36,16 +36,4 @@ export abstract class BasePage {
 		if ((await badge.count()) === 0) return null;
 		return badge.getAttribute("data-request-id");
 	}
-
-	/**
-	 * Espera a tela sair do estado de carregamento.
-	 *
-	 * Explícito em vez de `waitForTimeout`: espera fixa ou é lenta demais ou é
-	 * curta demais, e é a origem mais comum de suíte instável.
-	 */
-	async waitForLoaded(): Promise<void> {
-		await this.byTestId("loading-state")
-			.waitFor({ state: "detached" })
-			.catch(() => undefined);
-	}
 }

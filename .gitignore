@@ -4,6 +4,7 @@ node_modules/
 
 # build output
 dist/
+apps/api/functions/*/dist/
 build/
 .next/
 out/

@@ -20,7 +20,8 @@
 		"deploy:local": "./scripts/localstack/deploy.sh",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/api/dist apps/web/.next"
+		"clean": "rm -rf apps/api/functions/*/dist apps/web/.next apps/automation/{reports,test-results} packages/*/coverage apps/api/functions/*/coverage",
+		"clean:all": "pnpm clean && rm -rf node_modules apps/*/node_modules apps/api/functions/*/node_modules packages/*/node_modules infra/terraform/.terraform"
 	},
 	"devDependencies": {
 		"prettier": "^3.4.2",
