@@ -57,3 +57,16 @@ export const REQUEST_PRIORITY_LABELS: Readonly<Record<RequestPriority, string>> 
 	high: "Alta",
 	critical: "Crítica",
 };
+
+/**
+ * Rótulos dos eventos da trilha.
+ *
+ * O valor cru (`status_changed`) é identificador de máquina — quem lê a trilha
+ * de auditoria é uma pessoa conferindo o que aconteceu, e ela não deveria
+ * precisar traduzir snake_case de cabeça.
+ */
+export const REQUEST_EVENT_TYPE_LABELS: Readonly<Record<RequestEventType, string>> = {
+	created: "Solicitação aberta",
+	status_changed: "Situação alterada",
+	reviewed: "Conferência registrada",
+};

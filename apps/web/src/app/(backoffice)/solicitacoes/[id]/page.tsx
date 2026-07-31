@@ -1,7 +1,7 @@
 "use client";
 
 import type { RequestDetail } from "@saude-bliss/contracts";
-import { REQUEST_STATUS_LABELS } from "@saude-bliss/contracts";
+import { REQUEST_EVENT_TYPE_LABELS } from "@saude-bliss/contracts";
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { RequestIdBadge } from "~/components/shared/RequestIdBadge";
@@ -88,22 +88,32 @@ export default function SolicitacaoDetalhePage({ params }: { params: Promise<{ i
 					{detail.description}
 				</p>
 
+				{/*
+				 * `min-w-0` e `break-words` nas células: item de grid nasce com
+				 * `min-width: auto`, então um e-mail longo ou um UUID — que não têm
+				 * onde quebrar — estouram a coluna e escrevem por cima da vizinha em
+				 * tela estreita. É exatamente o conteúdo que estas células recebem.
+				 */}
 				<dl className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-4 text-sm sm:grid-cols-4">
-					<div>
+					<div className="min-w-0">
 						<dt className="text-xs text-slate-500">Solicitante</dt>
-						<dd data-testid="detail-createdBy">{detail.createdBy}</dd>
+						<dd className="break-words" data-testid="detail-createdBy">
+							{detail.createdBy}
+						</dd>
 					</div>
-					<div>
+					<div className="min-w-0">
 						<dt className="text-xs text-slate-500">Criada em</dt>
 						<dd>{formatDateTime(detail.createdAt)}</dd>
 					</div>
-					<div>
+					<div className="min-w-0">
 						<dt className="text-xs text-slate-500">Conferida por</dt>
-						<dd data-testid="detail-reviewedBy">{detail.reviewedBy ?? "—"}</dd>
+						<dd className="break-words" data-testid="detail-reviewedBy">
+							{detail.reviewedBy ?? "—"}
+						</dd>
 					</div>
-					<div>
+					<div className="min-w-0">
 						<dt className="text-xs text-slate-500">Trace da criação</dt>
-						<dd className="font-mono text-xs" data-testid="detail-createdTraceId">
+						<dd className="break-words font-mono text-xs" data-testid="detail-createdTraceId">
 							{detail.createdTraceId ?? "—"}
 						</dd>
 					</div>
@@ -134,16 +144,46 @@ export default function SolicitacaoDetalhePage({ params }: { params: Promise<{ i
 					</p>
 				)}
 
-				<ol className="mt-4 space-y-3" data-testid="detail-timeline" data-count={detail.events.length}>
+				{/*
+				 * A trilha é lida por gente conferindo o que aconteceu, então cada
+				 * evento responde às quatro perguntas na ordem em que se pergunta:
+				 * o quê, para qual situação, por quem e quando. O `traceId` fica por
+				 * último e apagado — serve para achar a requisição no CloudWatch,
+				 * não para ser lido em sequência.
+				 */}
+				<ol className="mt-4 space-y-2" data-testid="detail-timeline" data-count={detail.events.length}>
 					{detail.events.map((event) => (
-						<li key={event.id} className="flex flex-wrap items-center gap-3 text-sm" data-testid="timeline-event">
-							<span className="font-medium">{event.type}</span>
-							<span className="text-slate-500">
-								{event.fromStatus ? `${REQUEST_STATUS_LABELS[event.fromStatus]} → ` : ""}
-								{REQUEST_STATUS_LABELS[event.toStatus]}
+						<li
+							key={event.id}
+							className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md bg-slate-50 px-3 py-2.5 text-sm"
+							data-testid="timeline-event"
+							data-event-type={event.type}
+						>
+							<span className="font-medium text-slate-800">{REQUEST_EVENT_TYPE_LABELS[event.type]}</span>
+
+							<span className="flex items-center gap-1.5">
+								{/* A transição só aparece quando houve uma: em `created` o "de"
+								    é vazio, e uma seta partindo do nada confunde. */}
+								{event.fromStatus && (
+									<>
+										<StatusBadge status={event.fromStatus} />
+										<span aria-hidden className="text-slate-400">
+											→
+										</span>
+									</>
+								)}
+								<StatusBadge status={event.toStatus} />
 							</span>
-							<span className="text-slate-400">{event.actor}</span>
-							<span className="ml-auto font-mono text-xs text-slate-400">{event.traceId}</span>
+
+							<span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+								{event.actor && <span>por {event.actor}</span>}
+								<span>{formatDateTime(event.createdAt)}</span>
+								{event.traceId && (
+									<span className="font-mono text-slate-400" title="Identificador desta requisição nos logs">
+										{event.traceId}
+									</span>
+								)}
+							</span>
 						</li>
 					))}
 				</ol>
