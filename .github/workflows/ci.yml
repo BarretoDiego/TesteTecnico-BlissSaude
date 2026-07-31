@@ -1,0 +1,118 @@
+name: CI
+
+# Um workflow para o monorepo inteiro. O padrão da casa usa um por microserviço,
+# com filtro de `paths`, o que faz sentido em repositório com 14 serviços. Aqui
+# são quatro e a suíte inteira roda em menos de um minuto — separar produziria
+# quatro arquivos quase idênticos para economizar segundos.
+
+on:
+  push:
+    branches: [main, dev, stage]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Casa com o `.nvmrc` e com o runtime declarado no Terraform.
+  NODE_VERSION: "22"
+
+jobs:
+  qualidade:
+    name: Tipos, formato e paridade de rotas
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verificação de tipos
+        run: pnpm -r typecheck
+
+      - name: Formatação
+        run: pnpm format:check
+
+      # A rota é declarada no router, no Terraform e no serverless.yml. Sem esta
+      # verificação, acrescentar uma rota passa nos testes (que usam o app
+      # diretamente) e só o deploy revela o 403 do API Gateway.
+      - name: Paridade de rotas
+        run: pnpm --filter @saude-bliss/api check:routes
+
+  testes:
+    name: Testes
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: saudebliss
+          POSTGRES_PASSWORD: saudebliss
+          POSTGRES_DB: saudebliss
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://saudebliss:saudebliss@localhost:5433/saudebliss
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # A camada e2e exercita SQL real — as migrations precisam estar aplicadas
+      # antes, senão ela falha por tabela inexistente e o erro não indica isso.
+      - name: Migrations
+        run: pnpm --filter @saude-bliss/database db:migrate
+
+      - name: Suíte com cobertura
+        run: pnpm -r --filter './apps/api/functions/*' --filter @saude-bliss/core test:coverage
+
+  build:
+    name: Empacotamento
+    runs-on: ubuntu-latest
+    needs: qualidade
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # O build carrega o bundle e confere que ele exporta `lambdaHandler`. Um
+      # `require` mal resolvido só falha ao ser executado, e descobrir isso como
+      # crash de cold start dentro da Lambda é um péssimo lugar para depurar.
+      - name: Empacotar os microserviços
+        run: pnpm --filter './apps/api/functions/*' build
+
+      - name: Validar o Terraform
+        run: |
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+          terraform -chdir=infra/terraform fmt -check -recursive
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lambda-packages
+          path: apps/api/functions/*/dist/function.zip
+          retention-days: 7

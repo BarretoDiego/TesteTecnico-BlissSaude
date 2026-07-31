@@ -1,0 +1,58 @@
+# Estratégia de testes
+
+> Última atualização: 2026-07-31
+
+## Camadas
+
+| Camada        | Onde                     | O que exercita                      | Custo              |
+| ------------- | ------------------------ | ----------------------------------- | ------------------ |
+| `unit`        | `__tests__/unit/`        | tudo mockado, sem I/O               | ~1s                |
+| `integration` | `__tests__/integration/` | `app.inject()`, repositório mockado | ~1s                |
+| `contract`    | `__tests__/contract/`    | snapshot do `zodToJsonSchema`       | ~1s                |
+| `e2e`         | `__tests__/e2e/`         | Postgres real com migrations        | precisa do compose |
+
+```bash
+pnpm --filter @saude-bliss/bliss-requests test              # todas
+pnpm --filter @saude-bliss/bliss-requests test:unit         # só unidade
+SKIP_E2E=1 pnpm --filter @saude-bliss/bliss-requests test   # pula e2e
+```
+
+## Onde os testes moram
+
+Junto do código que testam. O runtime compartilhado é testado em
+`packages/core/__tests__` porque uma regressão ali quebra todos os serviços de uma
+vez e precisa ser pega no próprio pacote. Factories e duplos vêm de
+`@saude-bliss/testing` — uma mudança de schema atualiza um lugar em vez de divergir
+por serviço.
+
+## Convenções
+
+- Nome em **PT-BR** descrevendo comportamento: `it("retorna 404 quando a solicitação não existe")`.
+- Um comentário quando o teste previne um modo de falha específico — o _porquê_ do
+  teste é a informação que se perde primeiro.
+- `it.each` para tabela de casos; nada de `for` dentro de um `it`.
+
+## Cobertura
+
+**95%+** em statements, linhas e funções nas camadas de lógica (`middlewares`,
+`services`, `repositories`, `errors`, `utils`).
+
+Branches fica **abaixo** disso onde os ramos restantes são fallbacks defensivos sem
+caminho de negócio que os atinja — o `where` opcional do Drizzle, o coerce do Zod.
+Os limites no `jest.config.js` refletem o que as suítes de fato atingem, não um
+número redondo: forçar 95% ali produziria teste escrito para a métrica.
+
+Exclusões: `app.ts`, `router/index.ts`, barrels `index.ts` — composição de framework
+não tem lógica para cobrir e incluí-la só dilui a métrica.
+
+## Duas suítes que valem além da cobertura
+
+**`traceability.integration.test.ts`** afirma que um único `requestId` chega ao
+header, ao envelope, aos logs e à coluna persistida — inclusive em 400, 404, 500 e
+rota inexistente. O modo de falha que previne: cada camada gerar o próprio id, de
+forma que os logs parecem corretos até alguém tentar correlacionar um incidente.
+
+**`reviews.e2e.test.ts`** dispara duas conferências **concorrentes** da mesma
+solicitação e afirma que exatamente uma vence e exatamente um evento é gravado. É o
+compare-and-set no `where` do `UPDATE`; com repositório mockado isso seria apenas
+uma suposição sobre a query.
