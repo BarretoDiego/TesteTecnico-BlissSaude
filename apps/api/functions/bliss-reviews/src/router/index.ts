@@ -14,16 +14,27 @@ import ReviewsController from "../controllers/ReviewsController";
 import { GetTimelineMiddleware, GetTimelineSchema } from "../middlewares/GetTimelineMiddleware";
 import { ReviewRequestMiddleware, ReviewRequestSchema } from "../middlewares/ReviewRequestMiddleware";
 
-/** Rotas expostas por este microserviço, relativas ao prefixo. */
+/**
+ * Prefixo do domínio. Distinto do de `bliss-requests` de propósito: se as duas
+ * Lambdas dividissem `/requests`, o API Gateway precisaria de uma regra por
+ * método para decidir qual invocar, e cada rota nova exigiria mexer no
+ * roteamento da infraestrutura.
+ *
+ * O `:id` das rotas é o id da **solicitação** sendo conferida — a conferência é
+ * um recurso singular por solicitação, então ela não tem id próprio.
+ */
+export const ROUTE_PREFIX = "/reviews";
+
+/** Rotas expostas, relativas ao prefixo. */
 export const ROUTES: readonly RouteDescriptor[] = [
-	{ method: "PATCH", path: "/requests/:id/review" },
-	{ method: "GET", path: "/requests/:id/timeline" },
+	{ method: "PATCH", path: "/:id" },
+	{ method: "GET", path: "/:id/timeline" },
 ];
 
 export default async function router(app: FastifyInstance, options: RouterOptions): Promise<void> {
 	app.route({
 		method: "PATCH",
-		url: "/requests/:id/review",
+		url: "/:id",
 		schema: ReviewRequestSchema,
 		preValidation: [ReviewRequestMiddleware],
 		handler: ReviewsController.review,
@@ -31,7 +42,7 @@ export default async function router(app: FastifyInstance, options: RouterOption
 
 	app.route({
 		method: "GET",
-		url: "/requests/:id/timeline",
+		url: "/:id/timeline",
 		schema: GetTimelineSchema,
 		preValidation: [GetTimelineMiddleware],
 		handler: ReviewsController.getTimeline,

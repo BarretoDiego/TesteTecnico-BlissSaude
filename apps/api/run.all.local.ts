@@ -25,14 +25,17 @@ config({ path: [".env.local", ".env", "../../.env"] });
 import { createAggregatedApp, runLocal } from "@saude-bliss/core";
 import { closeDb } from "@saude-bliss/database";
 
-import blissRequestsRouter from "./functions/bliss-requests/src/router";
-import blissReviewsRouter from "./functions/bliss-reviews/src/router";
+import { service as blissRequests } from "./functions/bliss-requests/src/service";
+import { service as blissReviews } from "./functions/bliss-reviews/src/service";
 
-/** Registro dos domínios. Um serviço novo entra aqui e no `serverless.yml` dele. */
-const SERVICES = [
-	{ name: "bliss-requests", router: blissRequestsRouter, tag: "requests", description: "Solicitações" },
-	{ name: "bliss-reviews", router: blissReviewsRouter, tag: "reviews", description: "Conferência" },
-];
+/**
+ * Registro dos domínios.
+ *
+ * Cada entrada é a **mesma** definição que o `app.ts` do serviço usa para montar
+ * a Lambda — nome, prefixo, rotas e sonda de saúde vêm de uma fonte só. Um
+ * serviço novo entra aqui e no `serverless.yml` dele.
+ */
+const SERVICES = [blissRequests, blissReviews];
 
 async function main(): Promise<void> {
 	await runLocal({

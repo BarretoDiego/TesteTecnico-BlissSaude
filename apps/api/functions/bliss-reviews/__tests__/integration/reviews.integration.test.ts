@@ -45,7 +45,7 @@ describe("PATCH /requests/{id}/review", () => {
 		repository.findById.mockResolvedValue(current);
 		repository.updateStatus.mockResolvedValue(makeRequest({ ...current, status: "reviewed" }));
 
-		const response = await app.inject({ method: "PATCH", url: `/v1/requests/${ID}/review`, payload: validBody });
+		const response = await app.inject({ method: "PATCH", url: `/v1/reviews/${ID}`, payload: validBody });
 
 		expect(response.statusCode).toBe(200);
 		expect(response.json()).toMatchObject({
@@ -58,7 +58,7 @@ describe("PATCH /requests/{id}/review", () => {
 	it("responde 404 quando a solicitação não existe", async () => {
 		repository.findById.mockResolvedValue(null);
 
-		const response = await app.inject({ method: "PATCH", url: `/v1/requests/${ID}/review`, payload: validBody });
+		const response = await app.inject({ method: "PATCH", url: `/v1/reviews/${ID}`, payload: validBody });
 
 		expect(response.statusCode).toBe(404);
 		expect(response.json().error.code).toBe("REQUEST_NOT_FOUND");
@@ -67,7 +67,7 @@ describe("PATCH /requests/{id}/review", () => {
 	it("responde 409 quando a solicitação já foi conferida", async () => {
 		repository.findById.mockResolvedValue(makeRequest({ id: ID, status: "reviewed" }));
 
-		const response = await app.inject({ method: "PATCH", url: `/v1/requests/${ID}/review`, payload: validBody });
+		const response = await app.inject({ method: "PATCH", url: `/v1/reviews/${ID}`, payload: validBody });
 
 		expect(response.statusCode).toBe(409);
 		expect(response.json().error.code).toBe("REQUEST_ALREADY_REVIEWED");
@@ -78,14 +78,14 @@ describe("PATCH /requests/{id}/review", () => {
 		["reviewedBy sem e-mail", { ...validBody, reviewedBy: "daniel" }],
 		["campo desconhecido", { ...validBody, aprovado: true }],
 	])("responde 400 com %s", async (_case, payload) => {
-		const response = await app.inject({ method: "PATCH", url: `/v1/requests/${ID}/review`, payload });
+		const response = await app.inject({ method: "PATCH", url: `/v1/reviews/${ID}`, payload });
 
 		expect(response.statusCode).toBe(400);
 		expect(response.json().error.code).toBe("VALIDATION_ERROR");
 	});
 
 	it("responde 400 quando o id da rota não é um UUID", async () => {
-		const response = await app.inject({ method: "PATCH", url: "/v1/requests/abc/review", payload: validBody });
+		const response = await app.inject({ method: "PATCH", url: "/v1/reviews/abc", payload: validBody });
 
 		// 400 e não 404: id malformado é erro do cliente, não recurso ausente.
 		expect(response.statusCode).toBe(400);
@@ -100,7 +100,7 @@ describe("GET /requests/{id}/timeline", () => {
 			makeEvent({ requestId: ID, type: "created" }),
 		]);
 
-		const response = await app.inject({ method: "GET", url: `/v1/requests/${ID}/timeline` });
+		const response = await app.inject({ method: "GET", url: `/v1/reviews/${ID}/timeline` });
 
 		expect(response.statusCode).toBe(200);
 		expect(response.json().data.events).toHaveLength(2);
@@ -109,7 +109,7 @@ describe("GET /requests/{id}/timeline", () => {
 	it("responde 404 quando a solicitação não existe", async () => {
 		repository.findById.mockResolvedValue(null);
 
-		const response = await app.inject({ method: "GET", url: `/v1/requests/${ID}/timeline` });
+		const response = await app.inject({ method: "GET", url: `/v1/reviews/${ID}/timeline` });
 
 		expect(response.statusCode).toBe(404);
 	});
@@ -121,7 +121,7 @@ describe("rastreabilidade", () => {
 
 		const response = await app.inject({
 			method: "GET",
-			url: `/v1/requests/${ID}/timeline`,
+			url: `/v1/reviews/${ID}/timeline`,
 			headers: { [REQUEST_ID_HEADER]: "trace-reviews-001" },
 		});
 
@@ -134,7 +134,7 @@ describe("rastreabilidade", () => {
 
 		const response = await app.inject({
 			method: "PATCH",
-			url: `/v1/requests/${ID}/review`,
+			url: `/v1/reviews/${ID}`,
 			headers: { [REQUEST_ID_HEADER]: "trace-reviews-erro" },
 			payload: validBody,
 		});
@@ -145,7 +145,7 @@ describe("rastreabilidade", () => {
 
 describe("health", () => {
 	it("identifica o próprio serviço na resposta", async () => {
-		const response = await app.inject({ method: "GET", url: "/v1/health" });
+		const response = await app.inject({ method: "GET", url: "/v1/reviews/health" });
 
 		expect(response.json().data).toMatchObject({ service: "bliss-reviews", status: "ok", dependencies: "up" });
 	});
@@ -153,7 +153,7 @@ describe("health", () => {
 	it("responde 503 quando o banco está inacessível", async () => {
 		repository.ping.mockRejectedValue(new Error("sem conexão"));
 
-		const response = await app.inject({ method: "GET", url: "/v1/health" });
+		const response = await app.inject({ method: "GET", url: "/v1/reviews/health" });
 
 		expect(response.statusCode).toBe(503);
 	});
@@ -164,7 +164,7 @@ describe("fronteira do microserviço", () => {
 		["POST", "/v1/requests"],
 		["GET", "/v1/requests"],
 		["GET", "/v1/requests/00000000-0000-4000-8000-000000000001"],
-	])("não expõe %s %s — pertence ao bliss-requests", async (method, url) => {
+	])("não expõe %s %s — prefixo de outro microserviço", async (method, url) => {
 		const response = await app.inject({ method: method as "POST" | "GET", url, payload: {} });
 
 		expect(response.statusCode).toBe(404);

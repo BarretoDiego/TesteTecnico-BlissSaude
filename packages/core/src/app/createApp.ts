@@ -26,26 +26,13 @@ import { envService } from "../config/EnvService";
 import { DefaultErroHandler } from "../errors/DefaultErroHandler";
 import { enterRequestContext } from "../utils/requestContext";
 import { blissFail } from "../utils/responseEnvelope";
-import { registerHealthRoute, type HealthProbe } from "./healthRoute";
-import type { DomainRouter } from "./router";
+import { serviceTag, type ServiceDefinition } from "./defineService";
+import { registerHealthRoute } from "./healthRoute";
 import { setupSwagger } from "./swagger";
 
-export interface CreateAppOptions {
-	/** Nome do microserviço, ex.: `bliss-requests`. Vai para o Swagger e os logs. */
-	serviceName: string;
-	/** Descrição exibida no Swagger. */
-	description: string;
-	/** Prefixo das rotas do serviço, ex.: `/v1`. */
-	prefix?: string;
-	/** Tabela de rotas do domínio. */
-	router: DomainRouter;
-	/** Tags do OpenAPI. */
-	tags?: Array<{ name: string; description: string }>;
-	/**
-	 * Verificação de dependências para o `/health`. Opcional: um serviço sem
-	 * banco responde saudável só por estar de pé.
-	 */
-	healthProbe?: HealthProbe;
+export interface CreateAppOptions extends ServiceDefinition {
+	/** Prefixo de versão da API. Default: `API_PREFIX` (`/v1`). */
+	apiPrefix?: string;
 }
 
 /** Instância Fastify com as opções que todo serviço usa igual. */
@@ -63,6 +50,13 @@ function createInstance(): FastifyInstance {
 		// Gateway, fazendo todo log registrar o IP interno da AWS.
 		trustProxy: true,
 		bodyLimit: 1024 * 1024,
+		/**
+		 * Com prefixo de domínio, a rota raiz do serviço vira `/v1/requests/`. O
+		 * desafio especifica `POST /requests`, e um cliente HTTP qualquer não
+		 * acrescenta a barra. Aceitar as duas formas é o comportamento esperado de
+		 * uma API pública — sem isso, um `curl` sem barra recebe 404.
+		 */
+		ignoreTrailingSlash: true,
 	});
 }
 
@@ -112,20 +106,30 @@ export async function applyPlatform(app: FastifyInstance, moduleName: string): P
 
 /** Aplicação de um microserviço — o que vai para dentro de uma Lambda. */
 export async function createApp(options: CreateAppOptions): Promise<FastifyInstance> {
-	const prefix = options.prefix ?? envService.getApiPrefix();
+	// `/v1` + `/requests` = `/v1/requests`. Versão e domínio ficam separados para
+	// que versionar a API não obrigue a tocar em nenhum arquivo de rotas.
+	const prefix = `${options.apiPrefix ?? envService.getApiPrefix()}${options.routePrefix}`;
 	const app = createInstance();
 
-	await setupSwagger(app, options);
-	await applyPlatform(app, options.serviceName);
+	await setupSwagger(app, {
+		serviceName: options.name,
+		description: options.description,
+		tags: [{ name: serviceTag(options), description: options.description }],
+	});
+	await applyPlatform(app, options.name);
 
-	// `/health` em todo serviço, sempre no mesmo caminho e no mesmo formato: um
-	// healthcheck que varia por serviço é um healthcheck que ninguém automatiza.
-	await app.register(async (instance) => registerHealthRoute(instance, options), { prefix });
+	// `/health` sob o prefixo do domínio (`/v1/requests/health`): cada Lambda
+	// responde pela própria saúde no próprio caminho, sem colisão quando os
+	// serviços sobem juntos e sem regra extra no API Gateway.
+	await app.register(
+		async (instance) => registerHealthRoute(instance, { serviceName: options.name, healthProbe: options.healthProbe }),
+		{ prefix }
+	);
 
 	// O prefixo vai ao router como parâmetro, não só ao `register`: assim a
 	// função de rotas conhece o agrupamento sob o qual está sendo montada e pode
 	// declará-lo no log de inicialização e no verificador de paridade.
-	await app.register(async (instance) => options.router(instance, { prefix, serviceName: options.serviceName }), {
+	await app.register(async (instance) => options.router(instance, { prefix, serviceName: options.name }), {
 		prefix,
 	});
 

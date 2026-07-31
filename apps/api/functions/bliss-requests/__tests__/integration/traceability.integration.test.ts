@@ -155,7 +155,7 @@ describe("rastreabilidade em resposta de erro", () => {
 	it("mantém o requestId em rota inexistente", async () => {
 		const response = await app.inject({
 			method: "GET",
-			url: "/v1/rota-que-nao-existe",
+			url: "/v1/dominio-que-nao-existe",
 			headers: { [REQUEST_ID_HEADER]: "trace-do-not-found" },
 		});
 
@@ -213,14 +213,14 @@ describe("contrato dos endpoints", () => {
 	it("responde 503 no health quando o banco está inacessível", async () => {
 		repository.ping.mockRejectedValue(Object.assign(new Error("sem conexão"), { code: "08006" }));
 
-		const response = await app.inject({ method: "GET", url: "/v1/health" });
+		const response = await app.inject({ method: "GET", url: "/v1/requests/health" });
 
 		expect(response.statusCode).toBe(503);
 		expect(response.json().error.code).toBe("DATABASE_UNAVAILABLE");
 	});
 
 	it("responde 200 no health quando o banco responde", async () => {
-		const response = await app.inject({ method: "GET", url: "/v1/health" });
+		const response = await app.inject({ method: "GET", url: "/v1/requests/health" });
 
 		expect(response.statusCode).toBe(200);
 		expect(response.json().data).toMatchObject({ service: "bliss-requests", status: "ok", dependencies: "up" });
@@ -229,8 +229,8 @@ describe("contrato dos endpoints", () => {
 
 describe("fronteira do microserviço", () => {
 	it.each([
-		["PATCH", "/v1/requests/00000000-0000-4000-8000-000000000001/review"],
-		["GET", "/v1/requests/00000000-0000-4000-8000-000000000001/timeline"],
+		["PATCH", "/v1/reviews/00000000-0000-4000-8000-000000000001"],
+		["GET", "/v1/reviews/00000000-0000-4000-8000-000000000001/timeline"],
 	])("não expõe %s %s — pertence ao bliss-reviews", async (method, url) => {
 		const response = await app.inject({ method: method as "PATCH" | "GET", url, payload: {} });
 
@@ -267,5 +267,39 @@ describe("propagação de falha inesperada", () => {
 
 		expect(response.statusCode).toBe(503);
 		expect(response.json().error.code).toBe("DATABASE_UNAVAILABLE");
+	});
+});
+
+describe("agrupamento por prefixo de domínio", () => {
+	it("expõe a raiz do domínio sem exigir barra final", async () => {
+		repository.list.mockResolvedValue({ items: [], total: 0 });
+
+		// O desafio especifica `GET /requests`; nenhum cliente HTTP acrescenta a
+		// barra que o prefixo do Fastify criaria.
+		const [semBarra, comBarra] = await Promise.all([
+			app.inject({ method: "GET", url: "/v1/requests" }),
+			app.inject({ method: "GET", url: "/v1/requests/" }),
+		]);
+
+		expect(semBarra.statusCode).toBe(200);
+		expect(comBarra.statusCode).toBe(200);
+	});
+
+	it("resolve /requests/health como healthcheck, não como id de solicitação", async () => {
+		// `/health` e `/:id` convivem sob o mesmo prefixo porque o roteador do
+		// Fastify prefere rota estática à paramétrica. Se essa precedência mudasse,
+		// o healthcheck passaria a ser tratado como consulta e devolveria 400.
+		const response = await app.inject({ method: "GET", url: "/v1/requests/health" });
+
+		expect(response.statusCode).toBe(200);
+		expect(response.json().data.service).toBe("bliss-requests");
+	});
+
+	it("não responde fora do prefixo do domínio", async () => {
+		const response = await app.inject({ method: "GET", url: "/v1/reviews/health" });
+
+		// Cada Lambda atende só o próprio prefixo — é o que permite ao API Gateway
+		// rotear por um recurso `{proxy+}` por função.
+		expect(response.statusCode).toBe(404);
 	});
 });

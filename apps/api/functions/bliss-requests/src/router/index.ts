@@ -19,30 +19,36 @@ import { CreateRequestMiddleware, CreateRequestSchema } from "../middlewares/Cre
 import { GetRequestMiddleware, GetRequestSchema } from "../middlewares/GetRequestMiddleware";
 import { ListRequestsMiddleware, ListRequestsSchema } from "../middlewares/ListRequestsMiddleware";
 
-/** Rotas expostas por este microserviço, relativas ao prefixo. */
+/**
+ * Prefixo do domínio. Todas as rotas deste microserviço vivem sob ele, e é o
+ * caminho que o API Gateway encaminha inteiro para esta Lambda.
+ */
+export const ROUTE_PREFIX = "/requests";
+
+/** Rotas expostas, relativas ao prefixo. */
 export const ROUTES: readonly RouteDescriptor[] = [
-	{ method: "POST", path: "/requests" },
-	{ method: "GET", path: "/requests" },
-	{ method: "GET", path: "/requests/:id" },
+	{ method: "POST", path: "/" },
+	{ method: "GET", path: "/" },
+	{ method: "GET", path: "/:id" },
 ];
 
 export default async function router(app: FastifyInstance, options: RouterOptions): Promise<void> {
 	app.route({
 		method: "POST",
-		url: "/requests",
+		url: "/",
 		schema: CreateRequestSchema,
 		preValidation: [CreateRequestMiddleware],
 		handler: RequestsController.create,
 	});
 
 	/**
-	 * Declarada antes de `/requests/:id` de propósito. O Fastify usa roteador de
+	 * Declarada antes de `/:id` de propósito. O Fastify usa roteador de
 	 * árvore de prefixos e não depende de ordem, mas manter o específico acima do
 	 * paramétrico deixa a intenção legível para quem lê o arquivo.
 	 */
 	app.route({
 		method: "GET",
-		url: "/requests",
+		url: "/",
 		schema: ListRequestsSchema,
 		// `preHandler`, não `preValidation`: o schema converte tipos (ver o
 		// comentário no ListRequestsMiddleware).
@@ -52,7 +58,7 @@ export default async function router(app: FastifyInstance, options: RouterOption
 
 	app.route({
 		method: "GET",
-		url: "/requests/:id",
+		url: "/:id",
 		schema: GetRequestSchema,
 		preValidation: [GetRequestMiddleware],
 		handler: RequestsController.getById,

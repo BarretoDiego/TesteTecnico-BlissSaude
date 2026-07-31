@@ -12,19 +12,12 @@
 
 import { createApp, createLambdaHandler } from "@saude-bliss/core";
 import type { FastifyInstance } from "fastify";
-import router from "./router";
-import { ReviewsService } from "./services/ReviewsService";
+import { service } from "./service";
 
-export const SERVICE_NAME = "bliss-reviews";
+export const SERVICE_NAME = service.name;
 
 export function buildApp(): Promise<FastifyInstance> {
-	return createApp({
-		serviceName: SERVICE_NAME,
-		description: "Conferência operacional de solicitações e trilha de auditoria.",
-		router,
-		tags: [{ name: "reviews", description: "Conferência" }],
-		healthProbe: () => new ReviewsService().checkDatabase(),
-	});
+	return createApp(service);
 }
 
 /** Handler consumido pela AWS Lambda (`dist/app.lambdaHandler`). */

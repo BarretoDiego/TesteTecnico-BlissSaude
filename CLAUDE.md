@@ -18,8 +18,8 @@ saude-bliss/
 │   └── testing/                    # factories e duplos das suítes
 ├── apps/api/
 │   ├── functions/
-│   │   ├── bliss-requests/         # domínio: abertura e consulta de solicitações
-│   │   └── bliss-reviews/          # domínio: conferência e trilha de auditoria
+│   │   ├── bliss-requests/         # domínio /requests — abertura e consulta
+│   │   └── bliss-reviews/          # domínio /reviews  — conferência e auditoria
 │   └── run.all.local.ts            # sobe todos num processo só (desenvolvimento)
 ├── apps/web/                       # backoffice Next.js
 ├── apps/automation/                # suíte Playwright
@@ -33,7 +33,8 @@ saude-bliss/
 ```
 apps/api/functions/bliss-<domínio>/
 ├── src/
-│   ├── app.ts                  # createApp(...) + createLambdaHandler — só declara o que é do domínio
+│   ├── service.ts              # defineService(...) — nome, prefixo, rotas, sonda de saúde
+│   ├── app.ts                  # createApp(service) + createLambdaHandler
 │   ├── router/index.ts         # SOMENTE a tabela de rotas
 │   ├── controllers/            # {Domain}Controller.ts — orquestração fina
 │   ├── middlewares/            # {Action}Middleware.ts — Zod + validação de entrada
@@ -45,6 +46,21 @@ apps/api/functions/bliss-<domínio>/
 ├── serverless.yml              # emulação local + packaging
 ├── jest.config.js  package.json  tsconfig.json
 ```
+
+### Prefixo de domínio
+
+Cada microserviço agrupa **todas** as suas rotas sob um prefixo próprio: `/v1/requests`, `/v1/reviews`. O caminho completo é `API_PREFIX` (versão) + `routePrefix` (domínio), então versionar a API não obriga a tocar em arquivo de rotas.
+
+| Serviço          | Prefixo        | Rotas                                              |
+| ---------------- | -------------- | -------------------------------------------------- |
+| `bliss-requests` | `/v1/requests` | `POST /` · `GET /` · `GET /:id` · `GET /health`    |
+| `bliss-reviews`  | `/v1/reviews`  | `PATCH /:id` · `GET /:id/timeline` · `GET /health` |
+
+Prefixos distintos não são cosmética: o API Gateway roteia por um recurso `{proxy+}` por Lambda. Se duas funções dividissem `/requests`, seria preciso regra por método para desempatar, e cada rota nova exigiria mexer no roteamento da infraestrutura.
+
+Duas consequências que valem lembrar: `ignoreTrailingSlash` está ligado porque a rota raiz do domínio viraria `/v1/requests/` e nenhum cliente HTTP acrescenta essa barra; e `/health` convive com `/:id` sob o mesmo prefixo porque o roteador do Fastify prefere rota estática à paramétrica — há teste travando essa precedência.
+
+**Nome, prefixo, rotas e sonda de saúde vivem em `src/service.ts`**, num `defineService(...)`. É a mesma definição que `app.ts` usa para montar a Lambda e que `run.all.local.ts` usa para o modo agregado. Declarar nos dois lugares é como os modos divergem sem ninguém notar.
 
 Dentro de `src/` os imports são **relativos**; para fora, sempre pelo nome do pacote (`@saude-bliss/core`). Não há alias `@/`: um único processo (`run.all.local.ts`) carrega os dois serviços e não conseguiria resolver dois mapeamentos `@/*` distintos.
 
@@ -163,7 +179,7 @@ O logger lê o `requestId` do `AsyncLocalStorage`, **não** de um parâmetro. Po
 4. **Só o repository importa `db`.**
 5. **Frontend nunca chama `fetch`/axios de dentro de componente** — sempre via `services/`.
 6. **`data-testid` estável em toda linha e célula da tabela** — retrofit de seletor é o que torna suíte Playwright flaky.
-7. **Router recebe o prefixo por parâmetro** e declara `ROUTES` — é o que alimenta o log de inicialização e o verificador de paridade com o `serverless.yml`.
+7. **Router declara `ROUTE_PREFIX` e `ROUTES`** (relativas ao prefixo) e recebe o prefixo resolvido por parâmetro — é o que alimenta o log de inicialização e o verificador de paridade com o `serverless.yml`.
 8. **`run.local.ts` e `run.all.local.ts` não montam aplicação**: declaram e delegam a `createApp`/`createAggregatedApp` + `runLocal`. Os dois modos precisam vir do mesmo código, senão o desenvolvimento deixa de reproduzir produção.
 9. **Terraform é a única coisa que toca infraestrutura.** Serverless Framework é emulador local e packager, nunca deploy.
 10. **Filtro de listagem vive na URL**, não em estado React.

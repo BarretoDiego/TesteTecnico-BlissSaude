@@ -20,29 +20,25 @@ import fastify, { type FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { envService } from "../config/EnvService";
 import { applyPlatform } from "./createApp";
-import type { DomainRouter } from "./router";
-
-export interface AggregatedService {
-	name: string;
-	router: DomainRouter;
-	/** Tag do OpenAPI que agrupa as rotas do domínio. */
-	tag: string;
-	description: string;
-}
+import { serviceTag, type ServiceDefinition } from "./defineService";
+import { registerHealthRoute } from "./healthRoute";
 
 export interface CreateAggregatedAppOptions {
-	services: readonly AggregatedService[];
-	prefix?: string;
+	services: readonly ServiceDefinition[];
+	/** Prefixo de versão da API. Default: `API_PREFIX` (`/v1`). */
+	apiPrefix?: string;
 }
 
 export async function createAggregatedApp(options: CreateAggregatedAppOptions): Promise<FastifyInstance> {
-	const prefix = options.prefix ?? envService.getApiPrefix();
+	const apiPrefix = options.apiPrefix ?? envService.getApiPrefix();
 
 	const app = fastify({
 		genReqId: (req) => (req.headers[REQUEST_ID_HEADER] as string) || randomUUID(),
 		logger: { level: envService.getLogLevel() },
 		trustProxy: true,
 		bodyLimit: 1024 * 1024,
+		// Mesmo motivo de `createApp`: a rota raiz do domínio não pode exigir barra.
+		ignoreTrailingSlash: true,
 	});
 
 	await app.register(fastifySwagger, {
@@ -56,7 +52,7 @@ export async function createAggregatedApp(options: CreateAggregatedAppOptions): 
 				version: "1.0.0",
 			},
 			tags: [
-				...options.services.map((service) => ({ name: service.tag, description: service.description })),
+				...options.services.map((service) => ({ name: serviceTag(service), description: service.description })),
 				{ name: "health", description: "Saúde do processo agregado" },
 			],
 		},
@@ -66,7 +62,19 @@ export async function createAggregatedApp(options: CreateAggregatedAppOptions): 
 	// Mesmo código de plataforma da factory de serviço único.
 	await applyPlatform(app, "aggregated");
 
+	// Cada domínio no próprio prefixo — os mesmos caminhos que cada Lambda expõe
+	// isolada, que é o que torna o modo agregado representativo.
 	for (const service of options.services) {
+		const prefix = `${apiPrefix}${service.routePrefix}`;
+
+		// O `/health` de cada domínio também é registrado aqui, no mesmo caminho
+		// que a Lambda isolada expõe. Sem isso, um script de smoke que funciona no
+		// agregado quebraria no deploy — e vice-versa.
+		await app.register(
+			async (instance) =>
+				registerHealthRoute(instance, { serviceName: service.name, healthProbe: service.healthProbe }),
+			{ prefix }
+		);
 		await app.register(async (instance) => service.router(instance, { prefix, serviceName: service.name }), {
 			prefix,
 		});
@@ -79,13 +87,16 @@ export async function createAggregatedApp(options: CreateAggregatedAppOptions): 
 	 * o que se reporta é quais domínios ele está servindo. O `mode` no payload
 	 * evita que alguém confunda esta resposta com a de um serviço isolado.
 	 */
-	app.get(`${prefix}/health`, async (req, reply) =>
+	app.get(`${apiPrefix}/health`, async (req, reply) =>
 		reply.header(REQUEST_ID_HEADER, req.id).send({
 			success: true,
 			data: {
 				status: "ok",
 				mode: "aggregated",
-				services: options.services.map((service) => service.name),
+				services: options.services.map((service) => ({
+					name: service.name,
+					prefix: `${apiPrefix}${service.routePrefix}`,
+				})),
 				env: envService.getEnv(),
 			},
 			requestId: req.id,
