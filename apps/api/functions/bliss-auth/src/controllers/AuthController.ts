@@ -4,7 +4,7 @@
  * Orquestração HTTP da autenticação.
  */
 
-import { BaseController, BlissError, DefaultErroHandler, blissSuccess } from "@saude-bliss/core";
+import { BaseController, DefaultErroHandler, blissSuccess } from "@saude-bliss/core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
 	TLoginFastifyRequest,
@@ -16,27 +16,17 @@ import { AuthService } from "../services/AuthService";
 const MODULE = "AuthController";
 
 /**
- * Identidade que o authorizer anexou ao evento.
+ * Identidade que o authorizer anexou ao evento, quando há uma.
  *
  * O API Gateway a entrega em `event.requestContext.authorizer`, e o
  * `@fastify/aws-lambda` a repassa em `req.awsLambda.event`. Ler daqui — e não do
- * header `Authorization` — é o que evita revalidar o token que a borda já validou.
+ * header `Authorization` — evita revalidar o token que a borda já validou.
  */
-function principalIdFrom(req: FastifyRequest): string {
+function principalIdFromAuthorizer(req: FastifyRequest): string | undefined {
 	const event = (req as { awsLambda?: { event?: { requestContext?: { authorizer?: Record<string, string> } } } })
 		.awsLambda?.event;
 	const authorizer = event?.requestContext?.authorizer;
-	const userId = authorizer?.userId ?? authorizer?.principalId;
-
-	if (!userId) {
-		// Sem contexto do authorizer não há como saber quem chama. Acontece quando
-		// a rota é exposta sem autorização por engano — falhar alto aqui é melhor
-		// do que devolver o usuário errado.
-		throw BlissError.from("INVALID_CREDENTIALS", {
-			message: "Requisição sem identidade autenticada",
-		});
-	}
-	return userId;
+	return authorizer?.userId ?? authorizer?.principalId;
 }
 
 class AuthController extends BaseController {
@@ -80,10 +70,22 @@ class AuthController extends BaseController {
 		}
 	};
 
-	/** `GET /auth/me` → 200. */
+	/**
+	 * `GET /auth/me` → 200.
+	 *
+	 * Resolve a identidade em duas etapas. Em produção o authorizer já validou o
+	 * token e anexou o contexto ao evento — é o caminho preferido, e evita
+	 * revalidar o que a borda validou.
+	 *
+	 * Sem esse contexto, valida o `Authorization` diretamente. Isso não é um
+	 * atalho de conveniência: sem ele o endpoint é **inutilizável fora da Lambda**,
+	 * porque nem `run.all.local` nem o LocalStack Community executam authorizer —
+	 * e um endpoint que só funciona implantado não é exercitável pelo backoffice
+	 * nem pela automação.
+	 */
 	me = async (req: FastifyRequest, res: FastifyReply): Promise<FastifyReply> => {
 		try {
-			const userId = principalIdFrom(req);
+			const userId = principalIdFromAuthorizer(req) ?? (await this.auth.resolvePrincipal(req.headers.authorization));
 			this.logStart(MODULE, "me", "consultando identidade", { userId });
 			const user = await this.auth.me(userId);
 			this.logSuccess(MODULE, "me", "identidade resolvida", { userId });
@@ -95,4 +97,4 @@ class AuthController extends BaseController {
 }
 
 export default new AuthController();
-export { AuthController, principalIdFrom };
+export { AuthController, principalIdFromAuthorizer };

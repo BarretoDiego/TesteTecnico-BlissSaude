@@ -7,17 +7,18 @@
  * Por isso lê `DATABASE_URL` direto do `.env`, sem passar pelo Secrets Manager.
  */
 
-import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
+import { loadDatabaseEnv } from "./src/env";
 
-config({ path: [".env.local", ".env"] });
+// Resolve o `.env` a partir da raiz do monorepo, não do `cwd` — ver src/env.ts.
+const databaseUrl = loadDatabaseEnv();
 
 export default defineConfig({
 	dialect: "postgresql",
 	schema: "./src/schema/index.ts",
 	out: "./src/migrations",
 	dbCredentials: {
-		url: process.env.DATABASE_URL ?? "postgresql://saudebliss:saudebliss@localhost:5433/saudebliss",
+		url: databaseUrl,
 	},
 	verbose: true,
 	strict: true,

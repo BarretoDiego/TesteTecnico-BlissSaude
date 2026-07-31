@@ -12,9 +12,10 @@
  * seed é o pano de fundo.
  */
 
-import { config } from "dotenv";
+import { loadDatabaseEnv } from "./env";
 
-config({ path: [".env.local", ".env"] });
+// Antes de qualquer import do client: ele lê `process.env` no carregamento.
+loadDatabaseEnv();
 
 import type { RequestPriority, RequestStatus, UserRole } from "@saude-bliss/contracts";
 import { passwordService } from "@saude-bliss/core";

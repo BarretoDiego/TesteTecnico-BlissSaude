@@ -241,6 +241,8 @@ describe("AuthService.me", () => {
 	it("recusa quando o usuário do token não existe mais", async () => {
 		const repository = makeRepository({ findById: jest.fn().mockResolvedValue(null) });
 
-		await expect(new AuthService(repository, makePasswords(true), makeKeys()).me(USER.id)).rejects.toThrow(BlissError);
+		await expect(new AuthService(repository, makePasswords(true), makeKeys()).me(USER.id)).rejects.toBeInstanceOf(
+			BlissError
+		);
 	});
 });

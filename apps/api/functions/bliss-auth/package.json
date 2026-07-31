@@ -5,6 +5,7 @@
 	"description": "Microserviço de autenticação — emite, renova e revoga sessões no API Gateway",
 	"main": "src/app.ts",
 	"scripts": {
+		"dev": "BLISS_ENV=local ts-node-dev -r tsconfig-paths/register --respawn --transpile-only --ignore-watch node_modules run.local.ts",
 		"build": "BLISS_ENV=local node build.js",
 		"build:dev": "BLISS_ENV=dev node build.js",
 		"build:stage": "BLISS_ENV=stage node build.js",
@@ -12,7 +13,9 @@
 		"test": "jest",
 		"test:unit": "jest --selectProjects unit",
 		"test:coverage": "jest --coverage",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"offline": "serverless offline --stage local",
+		"package": "serverless package --stage local"
 	},
 	"dependencies": {
 		"@saude-bliss/contracts": "workspace:*",
@@ -33,6 +36,8 @@
 		"ts-jest": "^29.2.5",
 		"ts-node": "^10.9.2",
 		"tsconfig-paths": "^4.2.0",
-		"typescript": "^5.7.3"
+		"typescript": "^5.7.3",
+		"ts-node-dev": "^2.0.0",
+		"serverless-offline": "13.10.0"
 	}
 }

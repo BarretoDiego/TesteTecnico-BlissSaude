@@ -8,9 +8,10 @@
  * simultâneas e o tempo de execução entraria na latência da primeira requisição.
  */
 
-import { config } from "dotenv";
+import { loadDatabaseEnv } from "./env";
 
-config({ path: [".env.local", ".env"] });
+// Antes de qualquer import do client: ele lê `process.env` no carregamento.
+loadDatabaseEnv();
 
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { join } from "node:path";

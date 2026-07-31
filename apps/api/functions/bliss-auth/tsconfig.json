@@ -12,6 +12,6 @@
 		},
 		"types": ["node", "jest"]
 	},
-	"include": ["src/**/*.ts", "__tests__/**/*.ts"],
+	"include": ["src/**/*.ts", "__tests__/**/*.ts", "run.local.ts"],
 	"exclude": ["node_modules", "dist"]
 }

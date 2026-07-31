@@ -18,7 +18,7 @@ import {
 	type PasswordService,
 	type SigningKeyService,
 } from "@saude-bliss/core";
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { AuthRepository } from "../repositories/AuthRepository";
 
@@ -200,6 +200,45 @@ export class AuthService extends BaseService {
 			throw BlissError.from("INVALID_CREDENTIALS");
 		}
 		return user;
+	}
+
+	/**
+	 * Resolve o principal a partir do header `Authorization`.
+	 *
+	 * Usado só quando não há contexto de authorizer — desenvolvimento local e
+	 * LocalStack Community. Valida o token com a **mesma** chave e as mesmas
+	 * restrições que o `bliss-authorizer` aplica, então o comportamento é
+	 * idêntico ao de produção; o que muda é apenas onde a validação acontece.
+	 */
+	async resolvePrincipal(authorizationHeader: string | undefined): Promise<string> {
+		if (!authorizationHeader) {
+			this.logFailed(MODULE, "resolvePrincipal", "requisição sem credencial");
+			throw BlissError.from("INVALID_CREDENTIALS", { message: "Requisição sem identidade autenticada" });
+		}
+
+		const [scheme, token] = authorizationHeader.split(" ");
+		if (scheme?.toLowerCase() !== "bearer" || !token) {
+			throw BlissError.from("INVALID_CREDENTIALS", { message: "Authorization deve usar o esquema Bearer" });
+		}
+
+		try {
+			const key = await this.keys.getKey();
+			const { payload } = await jwtVerify(token, key, {
+				// Fixar o algoritmo: sem isso um token forjado com `alg: none` passa.
+				algorithms: ["HS256"],
+				issuer: envService.optional("JWT_ISSUER", "saude-bliss"),
+				audience: envService.optional("JWT_AUDIENCE", "saude-bliss-api"),
+				clockTolerance: 5,
+			});
+
+			if (!payload.sub) throw new Error("token sem claim `sub`");
+			return payload.sub;
+		} catch (error) {
+			this.logFailed(MODULE, "resolvePrincipal", "token inválido", {
+				reason: error instanceof Error ? error.message : String(error),
+			});
+			throw BlissError.from("INVALID_CREDENTIALS", { message: "Token inválido ou expirado" });
+		}
 	}
 
 	/** Conectividade com o banco, para o `/health`. */

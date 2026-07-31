@@ -18,6 +18,36 @@ import { blissFail } from "../utils/responseEnvelope";
 import { BlissError } from "./BlissError";
 import { ERROR_CATALOG } from "./catalog";
 
+/**
+ * Erro de validação do próprio Fastify.
+ *
+ * O Fastify valida `body`, `params` e `querystring` contra o JSON Schema da rota
+ * no estágio `preValidation` — **antes** dos middlewares registrados como
+ * `preHandler`. O erro dele não é um `ZodError` nem um `BlissError`, então sem
+ * este reconhecimento caía no catch-all e virava **500**: qualquer rota com
+ * schema declarado devolvia erro de servidor para entrada inválida do cliente.
+ */
+interface FastifyValidationError {
+	validation: Array<{ instancePath?: string; params?: Record<string, unknown>; message?: string }>;
+	validationContext?: string;
+}
+
+function isFastifyValidationError(error: unknown): error is FastifyValidationError {
+	return typeof error === "object" && error !== null && Array.isArray((error as FastifyValidationError).validation);
+}
+
+/** Traduz os problemas do Ajv para o mesmo formato dos problemas do Zod. */
+function formatFastifyIssues(error: FastifyValidationError): Array<{ field: string; message: string }> {
+	return error.validation.map((issue) => {
+		// `instancePath` vem como "/status"; o contexto diz de onde — body, params,
+		// querystring. Compor os dois dá "querystring.status", que é acionável.
+		const path = (issue.instancePath ?? "").replace(/^\//, "").replace(/\//g, ".");
+		const context = error.validationContext ?? "";
+		const field = [context, path].filter(Boolean).join(".") || "(raiz)";
+		return { field, message: issue.message ?? "valor inválido" };
+	});
+}
+
 /** Achata o `ZodError` em algo consumível por um formulário no front. */
 function formatZodIssues(error: ZodError): Array<{ field: string; message: string }> {
 	return error.issues.map((issue) => ({
@@ -70,7 +100,20 @@ export function DefaultErroHandler(
 		});
 	}
 
-	// 2. Erro de domínio — status e mensagem já vieram do catálogo.
+	// 2. Validação do Fastify (Ajv), que acontece antes dos middlewares.
+	if (isFastifyValidationError(error)) {
+		const definition = ERROR_CATALOG.VALIDATION_ERROR;
+		logger.log("warn", module, action, "payload rejeitado pelo schema da rota", {
+			issues: formatFastifyIssues(error),
+		});
+		return blissFail(res, req, definition.httpStatus, {
+			code: "VALIDATION_ERROR",
+			message: definition.message,
+			details: formatFastifyIssues(error),
+		});
+	}
+
+	// 3. Erro de domínio — status e mensagem já vieram do catálogo.
 	if (BlissError.isBlissError(error)) {
 		// 4xx é regra de negócio, não defeito: `warn` para não sujar o alarme de erro.
 		const level = error.httpStatus >= 500 ? "error" : "warn";
@@ -78,7 +121,7 @@ export function DefaultErroHandler(
 		return blissFail(res, req, error.httpStatus, error.toDetail());
 	}
 
-	// 3. Banco fora do ar — retentável, não é defeito da aplicação.
+	// 4. Banco fora do ar — retentável, não é defeito da aplicação.
 	if (isDatabaseUnavailable(error)) {
 		const definition = ERROR_CATALOG.DATABASE_UNAVAILABLE;
 		logger.log("error", module, action, "banco de dados indisponível", { error });
@@ -88,7 +131,7 @@ export function DefaultErroHandler(
 		});
 	}
 
-	// 4. Desconhecido. Loga tudo, devolve o mínimo — stack trace em resposta de
+	// 5. Desconhecido. Loga tudo, devolve o mínimo — stack trace em resposta de
 	//    erro é vazamento de informação, e o `requestId` já liga a resposta ao log.
 	const definition = ERROR_CATALOG.INTERNAL_ERROR;
 	logger.log("error", module, action, "erro não tratado", { error });
