@@ -3,7 +3,7 @@
  *
  * Classe base que dá logging estruturado a qualquer camada por herança.
  *
- * Padrão da casa: `BaseController`, `BaseService` e `BaseRepository` estendem
+ * `BaseController`, `BaseService` e `BaseRepository` estendem
  * daqui, então toda classe de domínio já nasce com os seis verbos de log e a
  * mesma assinatura `(module, action, message, params?)`. Uniformidade de
  * assinatura é o que torna os logs consultáveis de forma agregada.

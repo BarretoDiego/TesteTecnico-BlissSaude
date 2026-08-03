@@ -66,7 +66,7 @@ resource "aws_api_gateway_resource" "version" {
 resource "aws_api_gateway_deployment" "this" {
   rest_api_id = aws_api_gateway_rest_api.this.id
 
-  # Hash do que compõe a API. O padrão da casa usa `timestamp()`, que força
+  # Hash do que compõe a API. Usar `timestamp()` aqui forçaria
   # redeploy em todo `apply` mesmo sem mudança — ruído no histórico e um
   # deployment novo a cada execução.
   triggers = {

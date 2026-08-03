@@ -130,8 +130,8 @@ resource "aws_api_gateway_integration" "this" {
 
 # Uma permissão por função, no nível da API — não uma por rota.
 #
-# O módulo da casa calcula um prefixo de caminho por rota, o que gera N permissões
-# e um `statement_id` por rota que colide quando duas rotas compartilham prefixo.
+# Calcular um prefixo de caminho por rota geraria N permissões e um
+# `statement_id` por rota que colide quando duas rotas compartilham prefixo.
 # Autorizar a API inteira é equivalente na prática (todas as rotas apontam para
 # esta função) e elimina a classe de erro.
 resource "aws_lambda_permission" "apigw" {
@@ -147,8 +147,8 @@ resource "aws_lambda_permission" "apigw" {
 #
 # Os headers não são declarados aqui de propósito: sob `AWS_PROXY` o API Gateway
 # repassa a requisição inteira, e os `method_response`/`integration_response` com
-# headers fixos — que o módulo da casa cria — são ignorados. Quem responde CORS é
-# o `@fastify/cors` dentro da aplicação.
+# headers fixos são ignorados. Quem responde CORS é o `@fastify/cors` dentro da
+# aplicação.
 #
 # Mas o gateway ainda precisa **rotear** o `OPTIONS` até lá. Sem estes métodos, o
 # preflight morre na borda com 403 (`Missing Authentication Token`) e toda chamada

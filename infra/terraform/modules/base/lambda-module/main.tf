@@ -23,7 +23,7 @@ resource "aws_iam_role" "lambda" {
 
 # Política mínima: escrever log, ler o próprio segredo e publicar métrica.
 # Sem `Action: "*"` nem `Resource: "*"` onde é possível ser específico — o
-# padrão da casa usa curinga em vários pontos e isso não deve ser copiado.
+# curinga aqui concederia mais do que a função precisa.
 data "aws_iam_policy_document" "lambda" {
   statement {
     sid    = "Logs"
@@ -76,7 +76,7 @@ resource "aws_lambda_function" "this" {
   timeout       = var.timeout
   memory_size   = var.memory_size
 
-  # O zip real produzido por `build.js`. O módulo equivalente do padrão da casa
+  # O zip real produzido por `build.js`. Um módulo que
   # zipa `src/app.ts` cru via `archive_file` — o que empacota TypeScript que a
   # Lambda não sabe executar.
   filename = var.lambda_package_file

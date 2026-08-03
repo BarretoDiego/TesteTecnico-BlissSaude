@@ -12,9 +12,8 @@
 		"forceConsistentCasingInFileNames": true,
 
 		/**
-		 * Desvio consciente do padrão da casa (backend Eyecare usa `strict: false`).
-		 * Projeto greenfield: sem dívida legada para acomodar, então o custo de ligar
-		 * é zero e o ganho é real. Ver docs/standards/global/typescript-configuration.md
+		 * Projeto novo, sem dívida de tipagem para acomodar: o custo de ligar é zero
+		 * e o ganho é real. Ver docs/standards/global/typescript-configuration.md
 		 */
 		"strict": true,
 		"noUncheckedIndexedAccess": true,

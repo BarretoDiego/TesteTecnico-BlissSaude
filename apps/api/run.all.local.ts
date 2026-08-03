@@ -1,7 +1,7 @@
 /**
  * Sobe todos os microserviços em um único processo.
  *
- * Padrão da casa (`run.all.local.ts`): um processo para acompanhar, um Swagger
+ * Um processo para acompanhar, um Swagger
  * com a API inteira, e o backoffice apontando para uma única origem sem CORS nem
  * proxy.
  *

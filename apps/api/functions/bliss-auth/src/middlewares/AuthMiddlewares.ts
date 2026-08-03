@@ -5,7 +5,7 @@
  *
  * Os três endpoints são pequenos e compartilham a mesma forma de resposta, então
  * ficam num arquivo só — separá-los em três produziria mais cabeçalho do que
- * conteúdo. O padrão de nomenclatura da casa é preservado por endpoint.
+ * conteúdo. A nomenclatura por endpoint é preservada.
  */
 
 import {

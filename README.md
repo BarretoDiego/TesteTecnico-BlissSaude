@@ -30,18 +30,18 @@ conferência operacional** com Playwright — mais um backoffice que fecha o cic
 
 ## 🎯 O que foi entregue
 
-| Requisito do desafio                                 | Onde                                                |
-| ---------------------------------------------------- | --------------------------------------------------- |
-| Node.js + TypeScript + Serverless Framework          | `apps/api/serverless.yml` — `pnpm deploy:sls`       |
+| Requisito do desafio                                 | Onde                                                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Node.js + TypeScript + Serverless Framework          | `apps/api/serverless.yml` — `pnpm deploy:sls`                                                          |
 | Deploy em API Gateway + Lambda                       | duas trilhas — Terraform e Serverless ([ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md)) |
-| Persistência em RDS, com justificativa               | [ADR 0004](docs/adr/0004-rds-e-pool-de-conexoes.md) |
-| Logs no CloudWatch e rastreabilidade por `requestId` | [ADR 0003](docs/adr/0003-requestid-traceability.md) |
-| `POST /requests` com validação, retornando 201       | `bliss-requests`                                    |
-| `GET /requests/{id}` com 404                         | `bliss-requests`                                    |
-| `GET /requests?createdBy=&status=`                   | `bliss-requests`                                    |
-| Separação handler/service/repository                 | todos os microserviços                              |
-| Automação Playwright com Page Objects                | `apps/automation/`                                  |
-| Headless e com UI, retries, trace, relatório         | `playwright.config.ts`                              |
+| Persistência em RDS, com justificativa               | [ADR 0004](docs/adr/0004-rds-e-pool-de-conexoes.md)                                                    |
+| Logs no CloudWatch e rastreabilidade por `requestId` | [ADR 0003](docs/adr/0003-requestid-traceability.md)                                                    |
+| `POST /requests` com validação, retornando 201       | `bliss-requests`                                                                                       |
+| `GET /requests/{id}` com 404                         | `bliss-requests`                                                                                       |
+| `GET /requests?createdBy=&status=`                   | `bliss-requests`                                                                                       |
+| Separação handler/service/repository                 | todos os microserviços                                                                                 |
+| Automação Playwright com Page Objects                | `apps/automation/`                                                                                     |
+| Headless e com UI, retries, trace, relatório         | `playwright.config.ts`                                                                                 |
 
 **Além do pedido:** autenticação e autorização (`bliss-auth` + `bliss-authorizer`),
 trilha de auditoria, e um backoffice Next.js — que é o sistema que a automação opera.
@@ -107,18 +107,18 @@ Detalhes em [`CLAUDE.md`](CLAUDE.md) e [ADR 0001](docs/adr/0001-microservicos-po
 
 ## 🧰 Stack
 
-| Camada    | Escolha                             | Por quê                                                                                       |
-| --------- | ----------------------------------- | --------------------------------------------------------------------------------------------- |
-| Runtime   | Node 22, TypeScript `strict`        | greenfield, sem dívida a acomodar                                                             |
-| HTTP      | Fastify 5 + `@fastify/aws-lambda`   | padrão da casa; schema por rota                                                               |
-| Validação | Zod + `zod-to-json-schema`          | um schema alimenta validação e Swagger                                                        |
-| Banco     | PostgreSQL + Drizzle ORM            | SQL-first, bundle mínimo em Lambda                                                            |
-| Build     | esbuild → `function.zip`            | Terraform e `sls` consomem o mesmo artefato                                                   |
+| Camada    | Escolha                              | Por quê                                                                                                                |
+| --------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Runtime   | Node 22, TypeScript `strict`         | greenfield, sem dívida a acomodar                                                                                      |
+| HTTP      | Fastify 5 + `@fastify/aws-lambda`    | schema por rota, adaptador oficial para Lambda                                                                         |
+| Validação | Zod + `zod-to-json-schema`           | um schema alimenta validação e Swagger                                                                                 |
+| Banco     | PostgreSQL + Drizzle ORM             | SQL-first, bundle mínimo em Lambda                                                                                     |
+| Build     | esbuild → `function.zip`             | Terraform e `sls` consomem o mesmo artefato                                                                            |
 | IaC       | Terraform **e** Serverless Framework | duas trilhas de deploy completas, em stages separados — [ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md) |
-| Emulação  | LocalStack v3                       | Serverless fixado na v3: a v4 exige conta e travaria o deploy offline                        |
-| Auth      | JWT HS256 (`jose`) + `scrypt`       | [ADR 0005](docs/adr/0005-autenticacao-e-autorizacao.md)                                       |
-| Frontend  | Next.js 16 App Router + Tailwind 4  | padrão da casa                                                                                |
-| E2E       | Playwright                          | Page Objects, oráculo de API, relatório CSV                                                   |
+| Emulação  | LocalStack v3                        | Serverless fixado na v3: a v4 exige conta e travaria o deploy offline                                                  |
+| Auth      | JWT HS256 (`jose`) + `scrypt`        | [ADR 0005](docs/adr/0005-autenticacao-e-autorizacao.md)                                                                |
+| Frontend  | Next.js 16 App Router + Tailwind 4   | Server Components e estado de filtro na URL                                                                            |
+| E2E       | Playwright                           | Page Objects, oráculo de API, relatório CSV                                                                            |
 
 ---
 
@@ -426,13 +426,13 @@ Mecanismo completo em [ADR 0003](docs/adr/0003-requestid-traceability.md).
 Em stages separados, então coexistem sem disputar recurso. As duas consomem o
 mesmo `dist/function.zip`. Ver [ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md).
 
-|            | Terraform             | Serverless Framework      |
-| ---------- | --------------------- | ------------------------- |
-| Comando    | `pnpm deploy:local`   | `pnpm deploy:sls`         |
-| Stage      | `local`               | `sls`                     |
-| Estado     | arquivo de state      | stack de CloudFormation   |
-| Declaração | `infra/terraform/`    | `apps/api/serverless.yml` |
-| Topologia  | uma API, 4 Lambdas    | idêntica                  |
+|            | Terraform           | Serverless Framework      |
+| ---------- | ------------------- | ------------------------- |
+| Comando    | `pnpm deploy:local` | `pnpm deploy:sls`         |
+| Stage      | `local`             | `sls`                     |
+| Estado     | arquivo de state    | stack de CloudFormation   |
+| Declaração | `infra/terraform/`  | `apps/api/serverless.yml` |
+| Topologia  | uma API, 4 Lambdas  | idêntica                  |
 
 Subir as duas e ver as duas URLs respondendo:
 
@@ -639,14 +639,14 @@ de uma `db.t4g.micro`. Detalhes em [ADR 0004](docs/adr/0004-rds-e-pool-de-conexo
 
 ## ⚖️ Decisões e limitações
 
-| Decisão                              | Motivo                                                                        |
-| ------------------------------------ | ----------------------------------------------------------------------------- |
-| Serverless Framework **e** Terraform | o desafio exige o primeiro, o padrão do time usa o segundo. Ambos implantam, em stages separados — ADR 0002 |
-| `serverless@3`                       | a v4 exige conta e travaria o deploy offline                                  |
-| LocalStack v3 fixado                 | as imagens de 2026 exigem token mesmo para serviços gratuitos                 |
-| `PATCH /reviews/{id}` além do escopo | a automação precisa de ação de escrita para ser fluxo, não roteiro de cliques |
-| `strict: true` no TypeScript         | desvio consciente do backend da casa (`strict: false`)                        |
-| Zod 3 em vez de 4                    | `zod-to-json-schema` é Zod-3-only, e é o padrão da casa                       |
+| Decisão                              | Motivo                                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Serverless Framework **e** Terraform | o desafio exige o primeiro; o segundo descreve a infraestrutura durável. Ambos implantam, em stages separados — ADR 0002 |
+| `serverless@3`                       | a v4 exige conta e travaria o deploy offline                                                                             |
+| LocalStack v3 fixado                 | as imagens de 2026 exigem token mesmo para serviços gratuitos                                                            |
+| `PATCH /reviews/{id}` além do escopo | a automação precisa de ação de escrita para ser fluxo, não roteiro de cliques                                            |
+| `strict: true` no TypeScript         | projeto novo, sem dívida de tipagem a acomodar                                                                           |
+| Zod 3 em vez de 4                    | `zod-to-json-schema` é Zod-3-only, e um schema alimenta validação e Swagger                                              |
 
 ### Limitações conhecidas
 

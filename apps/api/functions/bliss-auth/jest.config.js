@@ -1,7 +1,7 @@
 /**
  * Testes do microserviço `bliss-auth`.
  *
- * Os projects espelham as camadas do padrão da casa e permitem rodar cada uma
+ * Os projects espelham as camadas da aplicação e permitem rodar cada uma
  * isoladamente (`--selectProjects unit`). A separação importa na prática:
  * `unit` e `contract` não tocam I/O e rodam em ~1s, então é o que se executa a
  * cada save; `e2e` precisa de Postgres no ar e fica para o pipeline.

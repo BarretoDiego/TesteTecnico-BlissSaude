@@ -3,9 +3,9 @@
  *
  * Normalização de erros para o envelope de resposta.
  *
- * O nome mantém a grafia usada nos projetos da casa (`DefaultErroHandler`) de
- * propósito: quem vem do Eyecare encontra o mesmo símbolo. Renomear aqui só
- * criaria um dialeto novo.
+ * A grafia `DefaultErroHandler` — sem o segundo `r` — é intencional e uniforme
+ * em todo o projeto: renomear pela metade criaria dois símbolos para a mesma
+ * coisa, que é pior do que a grafia curiosa.
  *
  * A **ordem de classificação importa**: o caso mais específico vem primeiro, e o
  * `catch-all` nunca vaza detalhe interno para o cliente.

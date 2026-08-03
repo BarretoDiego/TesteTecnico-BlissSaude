@@ -1,8 +1,8 @@
 name: CI
 
-# Um workflow para o monorepo inteiro. O padrão da casa usa um por microserviço,
-# com filtro de `paths`, o que faz sentido em repositório com 14 serviços. Aqui
-# são quatro e a suíte inteira roda em menos de um minuto — separar produziria
+# Um workflow para o monorepo inteiro. Um por microserviço, com filtro de
+# `paths`, faria sentido num repositório com dezenas de serviços. Aqui são
+# quatro e a suíte inteira roda em menos de um minuto — separar produziria
 # quatro arquivos quase idênticos para economizar segundos.
 
 on:

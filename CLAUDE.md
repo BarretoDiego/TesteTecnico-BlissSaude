@@ -206,7 +206,7 @@ Cobertura: **95%** em `middlewares/`, `services/`, `utils/`, `errors/`; **90%** 
 - **Commits**: `type(scope): description` em inglês. `feat|fix|refactor|docs|chore|perf|test`; escopo `api|web|automation|infra|docs`.
 - **Prosa** (README, docs, mensagens de erro, nomes de teste) em **PT-BR**; **identificadores** em inglês.
 - **Prettier**: tabs, largura 120, aspas duplas. `pnpm format` antes de commitar.
-- **TypeScript `strict: true`** — desvio consciente do backend da casa, documentado em `docs/standards/global/typescript-configuration.md`.
+- **TypeScript `strict: true`** — projeto novo, sem dívida de tipagem a acomodar; documentado em `docs/standards/global/typescript-configuration.md`.
 - Todo doc em `docs/` abre com `> Última atualização: YYYY-MM-DD`.
 
 ## 🚨 Armadilhas conhecidas

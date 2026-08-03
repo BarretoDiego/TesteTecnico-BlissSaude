@@ -6,7 +6,7 @@
  * Nomenclatura: a coluna de correlação chama-se `trace_id`, não `request_id`.
  * A entidade já se chama *request*, então `requests.request_id` seria ambíguo e
  * colidiria com a FK em `request_events`. No HTTP o campo continua `requestId`,
- * que é o contrato da casa. Ver docs/adr/0003-requestid-traceability.md.
+ * que é o contrato HTTP. Ver docs/adr/0003-requestid-traceability.md.
  */
 
 import { relations } from "drizzle-orm";

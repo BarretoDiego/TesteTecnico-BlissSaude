@@ -3,7 +3,7 @@
  *
  * Resolução de ambiente e variáveis.
  *
- * Segue o padrão da casa: um único ponto que normaliza aliases de ambiente
+ * Um único ponto que normaliza aliases de ambiente
  * (`development`, `staging`, `prd`…) e responde `isLocalEnv()` / `isAWSEnv()`.
  * Sem isso, comparações de string espalhadas pelo código divergem — alguém
  * escreve `=== "dev"` e o valor chegou como `"development"`, e a condição passa

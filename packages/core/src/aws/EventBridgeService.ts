@@ -3,7 +3,7 @@
  *
  * Publicação de eventos de domínio no EventBridge.
  *
- * É o canal de comunicação **entre microserviços** no padrão da casa. A regra que
+ * É o canal de comunicação **entre microserviços**. A regra que
  * ele preserva: um serviço nunca chama o outro por HTTP para avisar que algo
  * aconteceu — publica o fato e segue. Sem isso, `bliss-requests` precisaria
  * conhecer a URL de `bliss-reviews`, e a fronteira de domínio viraria só uma

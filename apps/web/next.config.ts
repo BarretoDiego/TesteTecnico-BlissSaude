@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
 	transpilePackages: ["@saude-bliss/contracts"],
 
 	typescript: {
-		// O padrão da casa desliga esta checagem no build e confia no `typecheck`
+		// A checagem fica desligada no build, confiando no `typecheck`
 		// separado. Aqui ela fica ligada: o build é o último portão antes do
 		// deploy, e desligá-la significa descobrir erro de tipo em produção.
 		ignoreBuildErrors: false,

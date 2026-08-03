@@ -3,7 +3,7 @@
  *
  * Erro de domínio da aplicação.
  *
- * Equivale ao `AOError` / `BVError` dos projetos da casa. Código de domínio
+ * Código de domínio
  * nunca lança `Error` cru: sem código, o handler não sabe distinguir uma regra
  * de negócio violada (que é 4xx e esperada) de um defeito (que é 5xx e precisa
  * alarmar).

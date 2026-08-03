@@ -3,9 +3,9 @@
  *
  * Acesso a dados do domínio de solicitações.
  *
- * Papel de repositório no padrão da casa (`*DatabaseService`). É o **único**
- * módulo do serviço que importa `db` ou operadores do Drizzle: quando uma query
- * vaza para o service, testar regra de negócio passa a exigir banco de verdade.
+ * É o **único** módulo do serviço que importa `db` ou operadores do Drizzle:
+ * quando uma query vaza para o service, testar regra de negócio passa a exigir
+ * banco de verdade.
  *
  * Contém apenas as operações deste domínio — abertura e consulta. As escritas de
  * conferência ficam no `bliss-reviews`, que tem o próprio repositório.

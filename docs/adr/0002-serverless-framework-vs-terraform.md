@@ -6,9 +6,10 @@
 
 ## Contexto
 
-O desafio determina **Serverless Framework** como stack. O padrão da casa
-(`bv-backend`, `eyecareoticas-backend`, `eyecare-services`) usa **Terraform** em
-`devops/iac/`. Adotar só um dos dois descumpriria o enunciado ou o padrão do time.
+O desafio determina **Serverless Framework** como stack. A infraestrutura
+durável do projeto — banco, segredos, IAM — é descrita em **Terraform**. Adotar
+só um dos dois descumpriria o enunciado ou deixaria metade da infraestrutura
+sem descrição.
 
 ### As duas ferramentas competem?
 
@@ -20,9 +21,9 @@ tempo — cada uma mantém o próprio estado (CloudFormation aqui, arquivo de st
 ali), e dois donos do mesmo recurso produzem drift e remoção acidental.
 
 **Onde não competem:** o centro de gravidade é diferente. O Serverless Framework
-abstrai a *aplicação* — funções e eventos — e entrega emulação local e convenção
-de empacotamento que o Terraform não tem. O Terraform descreve *qualquer
-recurso*, e é onde a infraestrutura durável (VPC, RDS, DNS, IAM fino) cabe sem
+abstrai a _aplicação_ — funções e eventos — e entrega emulação local e convenção
+de empacotamento que o Terraform não tem. O Terraform descreve _qualquer
+recurso_, e é onde a infraestrutura durável (VPC, RDS, DNS, IAM fino) cabe sem
 contorção.
 
 ## Decisão
@@ -30,13 +31,13 @@ contorção.
 **Duas trilhas completas de deploy, cada uma capaz de subir o sistema inteiro
 sozinha, em stages separados.**
 
-|             | Terraform            | Serverless Framework       |
-| ----------- | -------------------- | -------------------------- |
-| Comando     | `pnpm deploy:local`  | `pnpm deploy:sls`          |
-| Stage       | `local`              | `sls`                      |
-| Estado      | arquivo de state     | stack de CloudFormation    |
-| Declaração  | `infra/terraform/`   | `apps/api/serverless.yml`  |
-| Topologia   | uma API, 4 Lambdas   | idêntica                   |
+|            | Terraform           | Serverless Framework      |
+| ---------- | ------------------- | ------------------------- |
+| Comando    | `pnpm deploy:local` | `pnpm deploy:sls`         |
+| Stage      | `local`             | `sls`                     |
+| Estado     | arquivo de state    | stack de CloudFormation   |
+| Declaração | `infra/terraform/`  | `apps/api/serverless.yml` |
+| Topologia  | uma API, 4 Lambdas  | idêntica                  |
 
 As duas coexistem: os nomes de recurso levam o stage, então subir uma não derruba
 a outra. `pnpm urls` mostra as duas URLs lado a lado, e o mesmo
@@ -102,8 +103,8 @@ Encontradas ao construir, todas contornadas ou documentadas:
 ## Consequências
 
 O enunciado é cumprido literalmente: `sls deploy` provisiona a API e devolve uma
-URL que responde. O padrão da casa também: o Terraform segue sendo a trilha
-principal, e é a que `pnpm start` usa.
+URL que responde. E o Terraform segue sendo a trilha principal — é a que
+`pnpm start` usa.
 
 O custo é manter duas declarações da mesma topologia. É deliberado, e o
 `check:routes` cobre a parte que mais divergiria.
