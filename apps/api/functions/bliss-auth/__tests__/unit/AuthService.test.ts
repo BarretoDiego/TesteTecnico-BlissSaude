@@ -231,6 +231,44 @@ describe("AuthService.logout", () => {
 	});
 });
 
+describe("AuthService.resolvePrincipal", () => {
+	it("registra o motivo mesmo quando a falha não é um Error", async () => {
+		// Rejeição com valor cru — um SDK que rejeita com string, um `throw` de
+		// literal. `error.message` seria `undefined` e a linha de log sairia sem o
+		// motivo, justamente na investigação de "por que este token não passa".
+		const logFailed = jest.spyOn(AuthService.prototype as unknown as { logFailed: () => void }, "logFailed");
+		const keys = {
+			getKey: jest.fn().mockRejectedValue("segredo de assinatura indisponível"),
+			resetCache: jest.fn(),
+		} as unknown as SigningKeyService;
+
+		const service = new AuthService(makeRepository(), makePasswords(true), keys);
+
+		await expect(service.resolvePrincipal("Bearer token-qualquer")).rejects.toBeInstanceOf(BlissError);
+		expect(logFailed).toHaveBeenCalledWith(
+			expect.any(String),
+			"resolvePrincipal",
+			"token inválido",
+			expect.objectContaining({ reason: "segredo de assinatura indisponível" })
+		);
+	});
+
+	it("não vaza o motivo interno na resposta", async () => {
+		const keys = {
+			getKey: jest.fn().mockRejectedValue("segredo de assinatura indisponível"),
+			resetCache: jest.fn(),
+		} as unknown as SigningKeyService;
+
+		const service = new AuthService(makeRepository(), makePasswords(true), keys);
+
+		// O motivo vai para o log, não para o cliente: detalhe de infraestrutura na
+		// resposta de autenticação é reconhecimento gratuito para quem sonda.
+		await expect(service.resolvePrincipal("Bearer token-qualquer")).rejects.toMatchObject({
+			message: "Token inválido ou expirado",
+		});
+	});
+});
+
 describe("AuthService.me", () => {
 	it("resolve a identidade a partir do id", async () => {
 		const repository = makeRepository();
@@ -244,5 +282,45 @@ describe("AuthService.me", () => {
 		await expect(new AuthService(repository, makePasswords(true), makeKeys()).me(USER.id)).rejects.toBeInstanceOf(
 			BlissError
 		);
+	});
+});
+
+describe("AuthService.checkDatabase", () => {
+	it("reporta saudável quando o banco responde", async () => {
+		const repository = makeRepository();
+
+		await expect(new AuthService(repository, makePasswords(true), makeKeys()).checkDatabase()).resolves.toBe(true);
+		expect(repository.ping).toHaveBeenCalled();
+	});
+});
+
+/**
+ * Definição do microserviço.
+ *
+ * O `service.ts` existe para que `app.ts` (a Lambda) e `run.all.local.ts` (todos
+ * os domínios num processo) leiam a **mesma** definição. Quando nome e prefixo
+ * estavam declarados nos dois lugares, podiam divergir sem ninguém notar — e o
+ * sintoma aparecia só no deploy, como 403 do API Gateway.
+ */
+describe("definição do serviço", () => {
+	it("declara nome e prefixo coerentes com o router", async () => {
+		const { service, ROUTE_PREFIX } = await import("../../src/service");
+		const { ROUTE_PREFIX: doRouter } = await import("../../src/router");
+
+		expect(service.name).toBe("bliss-auth");
+		expect(service.routePrefix).toBe("/auth");
+		// O prefixo reexportado precisa ser o do router, não uma cópia.
+		expect(ROUTE_PREFIX).toBe(doRouter);
+	});
+
+	it("a sonda de saúde consulta o banco de fato", async () => {
+		const consulta = jest.spyOn(AuthService.prototype, "checkDatabase").mockResolvedValue(true);
+		const { service } = await import("../../src/service");
+
+		await expect(service.healthProbe?.()).resolves.toBe(true);
+
+		// Não basta existir: uma sonda que devolve `true` sem tocar a dependência
+		// crítica reporta saudável enquanto toda requisição real falha.
+		expect(consulta).toHaveBeenCalled();
 	});
 });

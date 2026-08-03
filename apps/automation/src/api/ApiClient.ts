@@ -13,11 +13,13 @@
 
 import { request as playwrightRequest, type APIRequestContext } from "@playwright/test";
 import type {
+	AuthenticatedUser,
 	AuthSession,
 	CreateRequestPayload,
 	ListRequestsResult,
 	RequestDetail,
 	Request as RequestDto,
+	ReviewRequestPayload,
 } from "@saude-bliss/contracts";
 
 export class ApiClient {
@@ -90,6 +92,34 @@ export class ApiClient {
 	async getTimeline(id: string): Promise<RequestDetail> {
 		const response = await this.context.get(`reviews/${id}/timeline`, { headers: this.headers });
 		const body = (await response.json()) as { data: RequestDetail };
+		return body.data;
+	}
+
+	/**
+	 * Confere pela API, sem passar pela tela.
+	 *
+	 * Serve para montar o cenário que a tela **não** produz sozinha: outra pessoa
+	 * conferindo a solicitação enquanto ela está aberta no browser. É o que
+	 * permite afirmar que recarregar a trilha traz o evento novo.
+	 */
+	async reviewRequest(id: string, payload: ReviewRequestPayload): Promise<RequestDto> {
+		const response = await this.context.patch(`reviews/${id}`, { data: payload, headers: this.headers });
+
+		if (!response.ok()) {
+			throw new Error(`falha ao conferir solicitação (${response.status()}): ${await response.text()}`);
+		}
+		const body = (await response.json()) as { data: RequestDto };
+		return body.data;
+	}
+
+	/** Identidade que o servidor reconhece agora — o oráculo da tela de perfil. */
+	async me(): Promise<AuthenticatedUser> {
+		const response = await this.context.get("auth/me", { headers: this.headers });
+
+		if (!response.ok()) {
+			throw new Error(`falha ao consultar a identidade (${response.status()}): ${await response.text()}`);
+		}
+		const body = (await response.json()) as { data: AuthenticatedUser };
 		return body.data;
 	}
 

@@ -1,6 +1,6 @@
 # Saúde Bliss — Gestão de Solicitações
 
-[![testes](https://img.shields.io/badge/testes-745%20passando-brightgreen)](#-testes)
+[![testes](https://img.shields.io/badge/testes-890%20passando-brightgreen)](#-testes)
 [![e2e](https://img.shields.io/badge/playwright-21%20cenários-brightgreen)](#-automação-da-conferência)
 [![stack](https://img.shields.io/badge/stack-Node%2022%20·%20TypeScript%20·%20Fastify-blue)](#-stack)
 [![iac](https://img.shields.io/badge/iac-Terraform%20·%20Serverless%20Framework-844fba)](#-deploy)
@@ -296,7 +296,7 @@ conferência, trilha de auditoria, e o `requestId` persistido.
 ### 4. Suítes automatizadas
 
 ```bash
-pnpm test        # 745 testes — unidade, integração, contrato e e2e
+pnpm test        # 890 testes — unidade, integração, contrato e e2e
 pnpm test:e2e    # 21 cenários Playwright × headless e headed = 42 execuções
 pnpm typecheck   # sem erros de tipo em todo o monorepo
 ```
@@ -611,8 +611,8 @@ pnpm --filter @saude-bliss/api check:routes
 
 ## 🧪 Testes
 
-**745 testes** — 214 nos quatro microserviços, 445 nos três pacotes compartilhados
-e 86 no backoffice, com nomes em PT-BR descrevendo comportamento.
+**890 testes** — 290 nos quatro microserviços, 507 nos três pacotes compartilhados
+e 93 no backoffice, com nomes em PT-BR descrevendo comportamento.
 
 ```bash
 pnpm test              # as oito suítes do monorepo
@@ -649,19 +649,23 @@ Duas suítes valem além da cobertura:
   solicitação e afirma que exatamente uma vence e exatamente um evento é gravado.
   É o compare-and-set no `where` do `UPDATE`; repositório mockado só pode supor.
 
-**Cobertura** (`pnpm test:coverage`, statements):
+**Cobertura:** as oito suítes fecham em **100%** de statements, branches, funções
+e linhas. O limite no `jest.config.js` de cada pacote é **95% nos quatro
+critérios**, sem exceção por diretório — o CI barra abaixo disso.
 
-| Suíte                                                        | Statements | Branches |
-| ------------------------------------------------------------ | ---------- | -------- |
-| `contracts`, `database`, `bliss-authorizer`, `bliss-reviews` | 100%       | 100%     |
-| `core`                                                       | 100%       | 97%      |
-| `bliss-auth`                                                 | 99%        | 97%      |
-| `bliss-requests`                                             | 99%        | 75%      |
-| `web`                                                        | 99%        | 77%      |
+Chegar lá custou cobrir o que o caminho feliz não alcança, e é aí que os testes
+pagam:
 
-Branches fica abaixo onde os ramos restantes são fallbacks defensivos sem caminho
-de negócio que os atinja — o `where` opcional do Drizzle, o coerce do Zod. Forçar
-95% ali produziria teste escrito para a métrica, não para o comportamento.
+| Ramo                                      | Como é exercitado                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| `.returning()` vazio, contagem sem linha  | duplo do Drizzle injetado por construtor (`dbPromise`)             |
+| origem da API resolvida no servidor       | suíte com `@jest-environment node` — sob jsdom é inalcançável      |
+| falha que não é `ApiError`                | rejeição fora do interceptor, que é onde os `??` de fallback valem |
+| `.env` ausente na resolução da credencial | `existsSync` mockado, para o resultado não depender da máquina     |
+
+O último é o que mais importa: enquanto a suíte lia o disco de verdade, o mesmo
+teste passava por motivos diferentes na máquina de quem escreveu e no runner —
+e no runner passava sem afirmar nada.
 
 Os limites são verificados no CI, e vale registrar o que eles pegaram: ao escrever
 os testes que faltavam para o `PasswordService` apareceu um defeito real — a

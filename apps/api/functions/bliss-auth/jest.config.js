@@ -64,14 +64,10 @@ module.exports = {
 		"!src/router/index.ts",
 		"!src/**/index.ts",
 	],
-	// Limites conferidos contra a execução real, não aspiracionais. Statements,
-	// linhas e funções ficam em 95%+; branches fica abaixo porque parte dos
-	// ramos são fallbacks defensivos sem caminho de negócio que os atinja
-	// (o `where` opcional do Drizzle, o coerce do Zod). Forçar 95% ali
-	// produziria teste escrito para a métrica, não para o comportamento.
+	// 95% nos quatro critérios, sem exceção por diretório. Os ramos defensivos
+	// são cobertos, não dispensados: um `catch` sem teste é justamente o trecho
+	// que só roda no dia ruim — o pior lugar para descobrir uma regressão.
 	coverageThreshold: {
-		global: { branches: 75, functions: 95, lines: 95, statements: 95 },
-		"./src/middlewares/": { branches: 50, functions: 95, lines: 95, statements: 95 },
-		"./src/services/": { branches: 76, functions: 95, lines: 95, statements: 95 },
+		global: { branches: 95, functions: 95, lines: 95, statements: 95 },
 	},
 };

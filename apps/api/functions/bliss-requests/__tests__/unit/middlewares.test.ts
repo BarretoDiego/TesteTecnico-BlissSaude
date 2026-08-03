@@ -108,6 +108,21 @@ describe("ListRequestsMiddleware", () => {
 		expect(req.query).toMatchObject({ page: 1, pageSize: 20 });
 	});
 
+	it("aplica os defaults quando não há query nenhuma", async () => {
+		const reply = makeReply();
+		const req = makeFastifyRequest();
+		// O duplo normaliza `query` para `{}`; aqui o caso é a ausência do próprio
+		// objeto, que é o que o adaptador entrega.
+		(req as { query?: unknown }).query = undefined;
+
+		await ListRequestsMiddleware(req as never, reply.reply);
+
+		// `GET /requests` sem `?` chega sem objeto de query em alguns adaptadores —
+		// o do API Gateway entre eles. Sem o fallback, o `parse` recebe `undefined`
+		// e a rota mais simples da API responde 400.
+		expect(req.query).toMatchObject({ page: 1, pageSize: 20 });
+	});
+
 	it("converte page e pageSize de texto para número", async () => {
 		const reply = makeReply();
 		const req = makeFastifyRequest({ query: { page: "3", pageSize: "50" } });

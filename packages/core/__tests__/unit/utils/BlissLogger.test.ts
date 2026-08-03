@@ -185,4 +185,38 @@ describe("BlissLogger — nível padrão", () => {
 		expect(emite("debug")).toBe(false);
 		expect(emite("info")).toBe(true);
 	});
+
+	it("cai para NODE_ENV quando BLISS_ENV não está definida", () => {
+		delete process.env.LOG_LEVEL;
+		delete process.env.BLISS_ENV;
+		process.env.NODE_ENV = "test";
+
+		// `BLISS_ENV` é nossa; `NODE_ENV` é a que a ferramenta define. Sem este
+		// encadeamento, rodar sob Jest ou `next dev` cairia no ramo de produção e
+		// esconderia justamente as linhas de debug que se está tentando ler.
+		expect(emite("debug")).toBe(true);
+	});
+
+	it("assume ambiente local quando nenhuma das duas existe", () => {
+		delete process.env.LOG_LEVEL;
+		delete process.env.BLISS_ENV;
+		delete process.env.NODE_ENV;
+
+		// Sem variável nenhuma é máquina de quem está desenvolvendo, não produção:
+		// o padrão precisa ser o verboso, que é o que se quer no primeiro `pnpm dev`.
+		expect(emite("debug")).toBe(true);
+	});
+
+	it("cai para info quando o nível pedido não existe na tabela", () => {
+		const spy = jest.spyOn(console, "log").mockImplementation(() => {});
+
+		// Nível inventado chegando pelo construtor — configuração errada, ou um
+		// nível novo adicionado ao tipo e esquecido na tabela de pesos. Sem o
+		// fallback o peso mínimo viraria `undefined` e **toda** comparação de nível
+		// daria falso: o serviço rodaria mudo, que é pior do que verboso demais.
+		new BlissLogger("inexistente" as never).log("info", "Mod", "act", "msg");
+
+		expect(spy).toHaveBeenCalled();
+		spy.mockRestore();
+	});
 });

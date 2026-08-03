@@ -36,16 +36,28 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
 
 	return (
 		<div className="min-h-screen">
+			{/*
+			 * O cabeçalho é a peça que primeiro estoura em tela estreita: são três
+			 * itens de menu, o nome de quem está logado e o sair, todos numa linha
+			 * só. Em 393px isso somava 517px de conteúdo — a página inteira ganhava
+			 * rolagem horizontal e o menu passava por cima do botão de perfil, que
+			 * ficava inalcançável ao toque.
+			 *
+			 * A correção é por prioridade, não por quebra de linha: o que identifica
+			 * o produto (a marca) e o que repete o que o avatar já diz (o nome) saem
+			 * primeiro; menu e ações continuam sempre visíveis, e o menu rola sozinho
+			 * se algum dia crescer, em vez de empurrar o resto para fora da tela.
+			 */}
 			<header className="border-b border-slate-200 bg-white">
-				<div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-					<div className="flex items-center gap-8">
-						<span className="font-semibold">Saúde Bliss</span>
-						<nav className="flex gap-1">
+				<div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:gap-8 sm:px-6 sm:py-4">
+					<div className="flex min-w-0 items-center gap-4 sm:gap-8">
+						<span className="hidden shrink-0 font-semibold sm:inline">Saúde Bliss</span>
+						<nav className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1">
 							{NAV.map((item) => (
 								<Link
 									key={item.href}
 									href={item.href}
-									className={`rounded-md px-3 py-1.5 text-sm ${
+									className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm ${
 										pathname.startsWith(item.href) ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
 									}`}
 									data-testid={`nav-${item.href.slice(1)}`}
@@ -56,20 +68,23 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
 						</nav>
 					</div>
 
-					<div className="flex items-center gap-4">
+					<div className="flex shrink-0 items-center gap-2 sm:gap-4">
 						<button
 							onClick={() => setProfileOpen(true)}
 							className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900"
 							data-testid="current-user"
 							aria-haspopup="dialog"
+							// O nome some em tela estreita, então ele precisa continuar
+							// existindo para quem usa leitor de tela — o avatar é decorativo.
+							aria-label={`Perfil de ${user.name}`}
 						>
 							<span
-								className="flex size-7 items-center justify-center rounded-full bg-slate-900 text-xs font-medium text-white"
+								className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-medium text-white"
 								aria-hidden
 							>
 								{user.name.slice(0, 2).toUpperCase()}
 							</span>
-							{user.name}
+							<span className="hidden sm:inline">{user.name}</span>
 						</button>
 						<button
 							onClick={() => void logout()}
@@ -82,7 +97,7 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
 				</div>
 			</header>
 
-			<main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+			<main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
 
 			<ProfileDialog
 				open={profileOpen}

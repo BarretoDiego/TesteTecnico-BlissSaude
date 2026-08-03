@@ -222,6 +222,20 @@ describe("HealthService", () => {
 		expect(resultado.error).toBeTruthy();
 	});
 
+	it("degrada com mensagem genérica quando a falha não é ApiError", async () => {
+		// O interceptor converte tudo que vem da rede em `ApiError`. Um erro que
+		// escape dele — uma exceção no próprio interceptor, uma API do browser
+		// ausente — chegaria ao `catch` sem `code`, `message` de negócio nem
+		// `requestId`. Sem os fallbacks a tela de status renderizaria `undefined`
+		// no lugar do motivo, que é a única informação que ela tem a dar.
+		jest.spyOn(apiClient, "get").mockRejectedValue(new TypeError("crypto.randomUUID is not a function"));
+
+		const resultado = await HealthService.probe({ name: "bliss-requests", path: "/requests/health" });
+
+		expect(resultado).toMatchObject({ reachable: false, data: null, error: "Falha de comunicação" });
+		expect(resultado.requestId).toBeUndefined();
+	});
+
 	it("consulta todos os serviços e devolve um resultado por sonda", async () => {
 		mock.onGet(/\/health$/).reply(200, envelope({ status: "ok" }));
 

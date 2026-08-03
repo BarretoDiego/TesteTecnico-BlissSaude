@@ -1,9 +1,21 @@
 /**
  * Configuração do Playwright.
  *
- * Dois projects — headless e headed — para que o modo de execução seja uma
- * escolha de linha de comando, em vez de uma variável de ambiente que alguém
- * esquece de definir.
+ * Quatro projects em duas famílias:
+ *
+ * - **desktop** (`chromium-headless`, `chromium-headed`) — a suíte inteira menos
+ *   `tests/mobile/`. Headless e headed são o mesmo conjunto: o modo de execução
+ *   vira escolha de linha de comando, em vez de uma variável de ambiente que
+ *   alguém esquece de definir.
+ * - **mobile** (`mobile-chrome`, `mobile-safari`) — só `tests/mobile/`, com
+ *   emulação de dispositivo e eventos de toque.
+ *
+ * Rodar a suíte inteira nos quatro seria a escolha errada: metade do que ela
+ * verifica é regra de negócio, que não muda com a largura da tela, e o preço
+ * seria dobrar o tempo para reexecutar a mesma asserção. `tests/mobile/` cobre o
+ * que **só** falha em tela estreita — transbordo horizontal, alvo de toque
+ * coberto por outro elemento, modal maior que a viewport — sobre os mesmos
+ * fluxos críticos.
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -56,13 +68,41 @@ export default defineConfig({
 	projects: [
 		{
 			name: "chromium-headless",
+			testIgnore: /tests\/mobile\//,
 			use: { ...devices["Desktop Chrome"], headless: true },
 		},
 		{
 			name: "chromium-headed",
+			testIgnore: /tests\/mobile\//,
 			// `slowMo` deixa a execução acompanhável por uma pessoa — é o modo de
 			// acompanhar o fluxo na tela, não o de rodar no pipeline.
 			use: { ...devices["Desktop Chrome"], headless: false, launchOptions: { slowMo: 300 } },
+		},
+
+		/**
+		 * Android de tela pequena. `devices["Pixel 5"]` traz junto o que faz a
+		 * emulação valer: viewport de 393px, `deviceScaleFactor`, user agent móvel
+		 * e — o que mais importa aqui — `hasTouch`, que troca os eventos de mouse
+		 * por eventos de toque. Um alvo coberto por outro elemento só falha assim.
+		 */
+		{
+			name: "mobile-chrome",
+			testMatch: /tests\/mobile\//,
+			use: { ...devices["Pixel 5"] },
+		},
+
+		/**
+		 * iPhone, com o motor do Safari de verdade (WebKit).
+		 *
+		 * Não é redundante com o Pixel: a barra de endereço do iOS muda a altura
+		 * visível durante a rolagem, o `<dialog>` nativo tem histórico próprio de
+		 * divergência, e é o WebKit que decide o zoom automático em campo de
+		 * formulário. Diferenças que emulação sobre Chromium não reproduz.
+		 */
+		{
+			name: "mobile-safari",
+			testMatch: /tests\/mobile\//,
+			use: { ...devices["iPhone 13"] },
 		},
 	],
 

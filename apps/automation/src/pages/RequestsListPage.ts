@@ -2,7 +2,7 @@
  * @module automation/pages/RequestsListPage
  */
 
-import type { Locator } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 export interface RowSnapshot {
@@ -11,6 +11,14 @@ export interface RowSnapshot {
 	createdBy: string;
 	status: string;
 	priority: string;
+}
+
+/** O estado da paginação como a tela o publica. */
+export interface PaginationState {
+	page: number;
+	pageSize: number;
+	total: number;
+	totalPages: number;
 }
 
 export class RequestsListPage extends BasePage {
@@ -83,5 +91,160 @@ export class RequestsListPage extends BasePage {
 
 	async openRequest(id: string): Promise<void> {
 		await this.rowById(id).locator('[data-testid="request-cell-title"]').click();
+	}
+
+	// --- filtros pela tela -----------------------------------------------------
+	//
+	// Navegar pela URL é o caminho curto e é o que a maior parte dos testes usa.
+	// Estes métodos existem para o caso oposto: provar que os controles da tela
+	// **produzem** aquela URL. Sem isso, um filtro que parou de escrever no
+	// endereço passaria despercebido, porque todo teste chegaria pronto ao estado
+	// que ele deveria criar.
+
+	get filters(): Locator {
+		return this.byTestId("requests-filters");
+	}
+
+	get filterStatus(): Locator {
+		return this.byTestId("filter-status");
+	}
+
+	get filterPriority(): Locator {
+		return this.byTestId("filter-priority");
+	}
+
+	get filterCreatedBy(): Locator {
+		return this.byTestId("filter-createdBy");
+	}
+
+	get filterClear(): Locator {
+		return this.byTestId("filter-clear");
+	}
+
+	async selecionarStatus(status: string): Promise<void> {
+		await this.aoMudarConsulta(() => this.filterStatus.selectOption(status));
+	}
+
+	async selecionarPrioridade(priority: string): Promise<void> {
+		await this.aoMudarConsulta(() => this.filterPriority.selectOption(priority));
+	}
+
+	/**
+	 * Digita o solicitante e tira o foco.
+	 *
+	 * O `blur` não é detalhe de implementação vazando para o teste: a tela filtra
+	 * no `onBlur` de propósito, para não disparar uma requisição por tecla
+	 * digitada. Sem o `blur` explícito o filtro simplesmente não acontece.
+	 */
+	async digitarSolicitante(createdBy: string): Promise<void> {
+		await this.filterCreatedBy.fill(createdBy);
+		await this.aoMudarConsulta(() => this.filterCreatedBy.blur());
+	}
+
+	async limparFiltros(): Promise<void> {
+		await this.aoMudarConsulta(() => this.filterClear.click());
+	}
+
+	// --- paginação -------------------------------------------------------------
+
+	get pagination(): Locator {
+		return this.byTestId("pagination");
+	}
+
+	get paginationSummary(): Locator {
+		return this.byTestId("pagination-summary");
+	}
+
+	get pageSizeSelect(): Locator {
+		return this.byTestId("pagination-page-size");
+	}
+
+	get nextPage(): Locator {
+		return this.byTestId("pagination-next");
+	}
+
+	get previousPage(): Locator {
+		return this.byTestId("pagination-prev");
+	}
+
+	pageButton(page: number): Locator {
+		return this.byTestId(`pagination-page-${page}`);
+	}
+
+	/** Paginação segundo a tela — dos `data-*`, não do texto do resumo. */
+	async paginationState(): Promise<PaginationState> {
+		const element = this.pagination;
+		const [page, pageSize, total, totalPages] = await Promise.all([
+			element.getAttribute("data-page"),
+			element.getAttribute("data-page-size"),
+			element.getAttribute("data-total"),
+			element.getAttribute("data-total-pages"),
+		]);
+
+		return {
+			page: Number(page ?? 0),
+			pageSize: Number(pageSize ?? 0),
+			total: Number(total ?? 0),
+			totalPages: Number(totalPages ?? 0),
+		};
+	}
+
+	async irParaProximaPagina(): Promise<void> {
+		await this.aoMudarConsulta(() => this.nextPage.click());
+	}
+
+	async irParaPaginaAnterior(): Promise<void> {
+		await this.aoMudarConsulta(() => this.previousPage.click());
+	}
+
+	async irParaPagina(page: number): Promise<void> {
+		await this.aoMudarConsulta(() => this.pageButton(page).click());
+	}
+
+	async escolherTamanhoDePagina(size: number): Promise<void> {
+		await this.aoMudarConsulta(() => this.pageSizeSelect.selectOption(String(size)));
+	}
+
+	/**
+	 * Executa a ação e espera a tela alcançar a **nova** consulta.
+	 *
+	 * A ordem das duas esperas é o ponto. Esperar só o `data-query` bater com a
+	 * URL não funciona: no instante seguinte ao clique nem o endereço mudou nem a
+	 * tela redesenhou, então os dois ainda batem — pela consulta antiga — e a
+	 * leitura sai com os dados da página anterior. Foi assim que a paginação
+	 * "passou" mostrando a mesma solicitação nas duas páginas.
+	 */
+	private async aoMudarConsulta(acao: () => Promise<unknown>): Promise<void> {
+		const antes = this.page.url();
+		await acao();
+		await this.page.waitForURL((url) => url.toString() !== antes);
+		await this.waitForCurrentQuery();
+	}
+
+	/**
+	 * Espera a tela ter renderizado os dados da consulta que está na barra de
+	 * endereço **agora**.
+	 *
+	 * `waitForQuery` serve quando o teste sabe de antemão qual é a consulta. Aqui
+	 * ele não sabe: quem montou a URL foi o controle da tela, e a ordem dos
+	 * parâmetros depende da ordem em que foram acrescentados. Comparar com a URL
+	 * corrente cobre os dois passos — o endereço mudou e os dados o alcançaram.
+	 */
+	async waitForCurrentQuery(): Promise<void> {
+		await expect
+			.poll(
+				async () => {
+					const esperado = new URL(this.page.url()).searchParams.toString();
+					const renderizado = await this.byTestId("requests-list").getAttribute("data-query");
+					return renderizado === esperado;
+				},
+				{ message: "a tela deveria renderizar os dados da consulta que está na URL" }
+			)
+			.toBe(true);
+	}
+
+	/** Parâmetros da URL atual, para afirmar que o controle escreveu no endereço. */
+	searchParams(): URLSearchParams {
+		return new URL(this.page.url()).searchParams;
 	}
 }

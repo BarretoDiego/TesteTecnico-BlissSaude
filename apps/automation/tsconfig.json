@@ -3,6 +3,14 @@
 	"compilerOptions": {
 		"baseUrl": ".",
 		"noEmit": true,
+
+		/**
+		 * `DOM` além do padrão do monorepo: parte desta suíte roda **dentro do
+		 * browser**, via `page.evaluate`, e mede geometria (`getBoundingClientRect`,
+		 * `elementFromPoint`, `getComputedStyle`). Sem a lib, esse código seria
+		 * escrito às cegas, com `any` no lugar dos tipos que o navegador oferece.
+		 */
+		"lib": ["ES2022", "DOM"],
 		"isolatedModules": true,
 		"module": "CommonJS",
 		"moduleResolution": "Node",

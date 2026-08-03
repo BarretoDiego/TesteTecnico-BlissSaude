@@ -31,10 +31,8 @@ module.exports = {
 	// `toHaveTextContent` e afins — carregados depois do ambiente estar de pé.
 	setupFilesAfterEnv: ["<rootDir>/__tests__/.jest/setup-dom.ts"],
 	collectCoverageFrom: ["src/services/**/*.ts", "src/providers/**/*.tsx", "src/lib/**/*.ts"],
-	// Statements, linhas e funções em 95%+; branches em 75 porque os ramos
-	// restantes são inalcançáveis pelo caminho real: o `??` de mensagem e de
-	// `requestId` nos catch (o interceptor sempre produz `ApiError` preenchido) e
-	// o ramo de servidor do `resolveBaseUrl`, que não existe sob jsdom. Forçar
-	// 95 ali exigiria simular o módulo, testando o simulador e não o código.
-	coverageThreshold: { global: { branches: 75, functions: 95, lines: 95, statements: 95 } },
+	// 95% nos quatro critérios. O ramo de servidor do `resolveBaseUrl` é coberto
+	// por `instances.server.test.ts`, que declara `@jest-environment node` — sob
+	// jsdom `window` sempre existe e aquele caminho seria inalcançável.
+	coverageThreshold: { global: { branches: 95, functions: 95, lines: 95, statements: 95 } },
 };

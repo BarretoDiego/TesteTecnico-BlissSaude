@@ -13,10 +13,13 @@ import { test as base } from "@playwright/test";
 import type { CreateRequestPayload, Request as RequestDto } from "@saude-bliss/contracts";
 import { randomUUID } from "node:crypto";
 import { ApiClient } from "~/api/ApiClient";
+import { BackofficeShell } from "~/pages/BackofficeShell";
 import { ConferenciaPage } from "~/pages/ConferenciaPage";
 import { LoginPage } from "~/pages/LoginPage";
+import { NovaSolicitacaoPage } from "~/pages/NovaSolicitacaoPage";
 import { RequestDetailPage } from "~/pages/RequestDetailPage";
 import { RequestsListPage } from "~/pages/RequestsListPage";
+import { StatusPage } from "~/pages/StatusPage";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:4000/v1";
 const EMAIL = process.env.AUTOMATION_EMAIL ?? "daniel.morais@saudebliss.test";
@@ -42,6 +45,10 @@ export interface Fixtures {
 	requestsListPage: RequestsListPage;
 	requestDetailPage: RequestDetailPage;
 	conferenciaPage: ConferenciaPage;
+	novaSolicitacaoPage: NovaSolicitacaoPage;
+	statusPage: StatusPage;
+	/** Cabeçalho, menu e perfil — presentes em todas as telas autenticadas. */
+	shell: BackofficeShell;
 	/** Backoffice já autenticado. */
 	authenticated: void;
 }
@@ -84,6 +91,9 @@ export const test = base.extend<Fixtures>({
 	requestsListPage: async ({ page }, use) => use(new RequestsListPage(page)),
 	requestDetailPage: async ({ page }, use) => use(new RequestDetailPage(page)),
 	conferenciaPage: async ({ page }, use) => use(new ConferenciaPage(page)),
+	novaSolicitacaoPage: async ({ page }, use) => use(new NovaSolicitacaoPage(page)),
+	statusPage: async ({ page }, use) => use(new StatusPage(page)),
+	shell: async ({ page }, use) => use(new BackofficeShell(page)),
 
 	authenticated: async ({ loginPage }, use) => {
 		await loginPage.loginAndWait(EMAIL, PASSWORD);

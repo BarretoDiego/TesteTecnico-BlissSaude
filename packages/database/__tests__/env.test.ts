@@ -7,19 +7,41 @@
  * "nenhuma origem de credencial", mas funcionava para quem já tinha exportado
  * `DATABASE_URL` — o pior tipo de defeito, invisível para quem o escreveu.
  *
- * O `dotenv` é substituído por um duplo. Sem isso a suíte leria o `.env` real do
- * repositório e passaria pelo motivo errado: o resultado dependeria da máquina.
+ * O `dotenv` e o `existsSync` são substituídos por duplos. Sem isso a suíte leria
+ * o disco real e passaria pelo motivo errado: numa máquina com `.env` na raiz o
+ * carregamento é exercitado, numa máquina limpa — ou num runner de CI recém
+ * clonado — nenhum arquivo existe e o trecho nunca roda. Resultado dependente do
+ * ambiente é cobertura que oscila e asserção que não afirma nada.
  */
 
 import { config } from "dotenv";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { loadDatabaseEnv } from "../src/env";
 
 jest.mock("dotenv", () => ({ config: jest.fn() }));
+jest.mock("node:fs", () => ({
+	...jest.requireActual<typeof import("node:fs")>("node:fs"),
+	existsSync: jest.fn(),
+}));
 
 const configMock = config as jest.MockedFunction<typeof config>;
+const existsSyncMock = existsSync as jest.MockedFunction<typeof existsSync>;
 const ORIGINAL = { ...process.env };
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
+
+/** Caminhos por os quais o módulo procura, na ordem de precedência declarada. */
+const CANDIDATOS = [
+	join(REPO_ROOT, ".env.local"),
+	join(REPO_ROOT, ".env"),
+	join(REPO_ROOT, "apps", "api", ".env.local"),
+	join(REPO_ROOT, "apps", "api", ".env"),
+];
+
+/** Caminhos passados ao `dotenv` nesta execução. */
+function caminhosCarregados(): string[] {
+	return configMock.mock.calls.map(([opcoes]) => (opcoes as { path: string }).path);
+}
 
 function limparAmbiente() {
 	for (const chave of [
@@ -34,7 +56,11 @@ function limparAmbiente() {
 	}
 }
 
-beforeEach(limparAmbiente);
+beforeEach(() => {
+	limparAmbiente();
+	// Padrão: máquina limpa. Cada teste que precisa de arquivo diz qual existe.
+	existsSyncMock.mockReturnValue(false);
+});
 
 afterEach(() => {
 	process.env = { ...ORIGINAL };
@@ -42,6 +68,7 @@ afterEach(() => {
 
 describe("loadDatabaseEnv — origem dos arquivos", () => {
 	it("procura o `.env` a partir da raiz do repositório, não do cwd", () => {
+		existsSyncMock.mockReturnValue(true);
 		process.env.DATABASE_URL = "postgresql://u:p@host:5432/db";
 
 		loadDatabaseEnv();
@@ -49,10 +76,34 @@ describe("loadDatabaseEnv — origem dos arquivos", () => {
 		// A asserção que cobre o defeito real: os caminhos precisam ser absolutos e
 		// apontar para a raiz. Com `cwd`, `pnpm --filter` executa dentro do pacote
 		// e nenhum arquivo é encontrado.
-		const caminhos = configMock.mock.calls.map(([opcoes]) => (opcoes as { path: string }).path);
+		const caminhos = caminhosCarregados();
+		expect(caminhos.length).toBeGreaterThan(0);
 		for (const caminho of caminhos) {
 			expect(caminho.startsWith(REPO_ROOT)).toBe(true);
 		}
+	});
+
+	it("procura nos quatro candidatos, na ordem de precedência", () => {
+		existsSyncMock.mockReturnValue(true);
+		process.env.DATABASE_URL = "postgresql://u:p@host:5432/db";
+
+		loadDatabaseEnv();
+
+		// A ordem é o contrato: o `dotenv` não sobrescreve variável já definida,
+		// então quem é lido primeiro vence. Inverter a lista faria o `.env` da raiz
+		// perder para o do `apps/api`, silenciosamente.
+		expect(caminhosCarregados()).toEqual(CANDIDATOS);
+	});
+
+	it("carrega só os arquivos que existem", () => {
+		existsSyncMock.mockImplementation((caminho) => caminho === CANDIDATOS[1]);
+		process.env.DATABASE_URL = "postgresql://u:p@host:5432/db";
+
+		loadDatabaseEnv();
+
+		// Passar ao `dotenv` um caminho inexistente não quebra, mas mascara: a suíte
+		// deixaria de distinguir "achou e leu" de "nem procurou".
+		expect(caminhosCarregados()).toEqual([CANDIDATOS[1]]);
 	});
 
 	it("não explode quando nenhum arquivo existe", () => {
@@ -61,6 +112,7 @@ describe("loadDatabaseEnv — origem dos arquivos", () => {
 		process.env.DATABASE_URL = "postgresql://u:p@host:5432/db";
 
 		expect(() => loadDatabaseEnv()).not.toThrow();
+		expect(configMock).not.toHaveBeenCalled();
 	});
 });
 

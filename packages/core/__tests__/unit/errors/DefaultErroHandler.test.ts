@@ -181,6 +181,17 @@ describe("DefaultErroHandler — falha declarada pelo Fastify", () => {
 		expect(reply.payload.error.details).toEqual({ reason: "corpo ausente" });
 	});
 
+	it("descreve genericamente quando não há código nem mensagem", () => {
+		const reply = makeReply();
+
+		// Um erro 4xx sem `code` e sem `message` — o Fastify produz isso em alguns
+		// caminhos de parsing. Sem o texto padrão o detalhe sairia `undefined`, e a
+		// linha de log ficaria sem o único campo que explicaria a rejeição.
+		DefaultErroHandler({ statusCode: 400 }, reply.reply, makeFastifyRequest());
+
+		expect(reply.payload.error.details).toEqual({ reason: "requisição inválida" });
+	});
+
 	it("não confunde BlissError, que usa httpStatus", () => {
 		const reply = makeReply();
 

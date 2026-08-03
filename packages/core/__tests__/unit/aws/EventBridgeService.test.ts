@@ -118,6 +118,15 @@ describe("EventBridgeService.publishBatch", () => {
 		await expect(service.publishBatch([evento()])).resolves.toBe(0);
 	});
 
+	it("conta tudo como aceito quando a resposta omite FailedEntryCount", async () => {
+		// `FailedEntryCount` é opcional no contrato do SDK. Sem o `?? 0` a subtração
+		// daria `NaN`, e a contagem de aceitos — que é o retorno da função — viraria
+		// um número que nenhum chamador consegue interpretar.
+		eventBridgeMock.on(PutEventsCommand).resolves({});
+
+		await expect(service.publishBatch([evento(), evento()])).resolves.toBe(2);
+	});
+
 	it("segue para os lotes seguintes quando um falha", async () => {
 		const eventos = Array.from({ length: 15 }, () => evento());
 		eventBridgeMock

@@ -55,13 +55,22 @@ O fluxo pelo browser fica fora dessa contagem: é a suíte Playwright em
 
 ## Cobertura
 
-**95%+** em statements, linhas e funções nas camadas de lógica (`middlewares`,
-`services`, `repositories`, `errors`, `utils`).
+**95% nos quatro critérios** — statements, branches, funções e linhas — em todos
+os pacotes, sem exceção por diretório. É o que o `coverageThreshold` de cada
+`jest.config.js` declara, e o CI falha abaixo disso. Na prática as oito suítes
+fecham em 100%.
 
-Branches fica **abaixo** disso onde os ramos restantes são fallbacks defensivos sem
-caminho de negócio que os atinja — o `where` opcional do Drizzle, o coerce do Zod.
-Os limites no `jest.config.js` refletem o que as suítes de fato atingem, não um
-número redondo: forçar 95% ali produziria teste escrito para a métrica.
+O limite vale igual para branches porque é justamente o `catch`, o `??` e o `?.`
+que só rodam no dia ruim. Cobri-los não é perseguir métrica: é garantir que o
+tratamento de falha ainda funciona quando ninguém está olhando.
+
+Onde o caminho real não alcança o ramo, o teste **injeta** em vez de dispensar:
+
+| Ramo                           | Como                                                           |
+| ------------------------------ | -------------------------------------------------------------- |
+| resposta impossível do driver  | duplo do Drizzle pelo construtor (`new Repository(dbPromise)`) |
+| código que só roda no servidor | suíte própria com `@jest-environment node`                     |
+| leitura de arquivo do ambiente | `existsSync` mockado — sem isso a cobertura oscila por máquina |
 
 Exclusões: `app.ts`, `router/index.ts`, barrels `index.ts` — composição de framework
 não tem lógica para cobrir e incluí-la só dilui a métrica.

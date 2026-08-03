@@ -231,6 +231,21 @@ describe("POST /v1/auth/logout", () => {
 
 		expect(response.statusCode).toBe(400);
 	});
+
+	it("responde 503 quando o banco está fora", async () => {
+		repository.revokeRefreshToken.mockRejectedValue(Object.assign(new Error("sem conexão"), { code: "08006" }));
+
+		const response = await app.inject({
+			method: "POST",
+			url: "/v1/auth/logout",
+			payload: { refreshToken: "token-com-tamanho-suficiente-aqui" },
+		});
+
+		// A idempotência cobre "token já revogado", não "não consegui revogar":
+		// responder 200 aqui diria ao cliente que a sessão caiu enquanto ela segue
+		// válida no banco — e o token continuaria aceito no próximo refresh.
+		expect(response.statusCode).toBe(503);
+	});
 });
 
 describe("GET /v1/auth/me", () => {

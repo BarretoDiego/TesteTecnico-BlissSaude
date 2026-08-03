@@ -78,8 +78,14 @@ export default function StatusPage() {
 				</button>
 			</div>
 
-			<section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-				<table className="w-full text-sm">
+			{/*
+			 * `overflow-x-auto` e não `overflow-hidden`: são seis colunas que não
+			 * cabem em tela de celular, e esconder o excesso deixava as três últimas
+			 * — situação, ambiente e tempo de resposta — inalcançáveis justamente
+			 * quando alguém abre esta tela do celular para saber o que caiu.
+			 */}
+			<section className="overflow-x-auto rounded-lg border border-slate-200 bg-white" data-testid="status-table">
+				<table className="w-full min-w-3xl text-sm">
 					<thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
 						<tr>
 							<th className="px-4 py-3 font-medium">Microserviço</th>

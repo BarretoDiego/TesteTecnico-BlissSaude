@@ -74,7 +74,12 @@ export function Dialog({
 				// `m-auto` explícito: o `<dialog>` centraliza com `margin: auto` do
 				// user-agent, e o reset do Tailwind zera a margem de tudo — sem isto o
 				// modal cola no canto superior esquerdo.
-				"m-auto w-full max-w-md rounded-lg border border-slate-200 bg-white p-0 shadow-xl backdrop:bg-slate-900/40",
+				//
+				// A largura vem de `100vw` e não de `100%`: o `<dialog>` na camada de
+				// topo não tem o bloco contêiner que `w-full` presume, e com
+				// `w-full max-w-md` ele assumia os 448px do `max-w` inteiros — mais
+				// largos que um celular de 393px, com o modal saindo pela borda.
+				"m-auto w-[calc(100vw-2rem)] max-w-md rounded-lg border border-slate-200 bg-white p-0 shadow-xl backdrop:bg-slate-900/40",
 				className
 			)}
 			data-testid={testId}
