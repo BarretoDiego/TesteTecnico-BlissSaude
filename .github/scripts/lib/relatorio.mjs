@@ -40,6 +40,7 @@ export function situacaoDoResultado(resultado) {
 /** Duração humana. Segundos abaixo de um minuto, `m s` acima. */
 export function duracao(ms) {
 	if (!Number.isFinite(ms) || ms < 0) return "—";
+	if (ms < 1000) return "<1s";
 	const segundos = Math.round(ms / 1000);
 	if (segundos < 60) return `${segundos}s`;
 	return `${Math.floor(segundos / 60)}m ${String(segundos % 60).padStart(2, "0")}s`;

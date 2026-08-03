@@ -58,7 +58,10 @@ describe("ReviewRequestMiddleware — entrada válida", () => {
 	it.each(["reviewed", "rejected"])("aceita o desfecho %s", async (status) => {
 		const reply = makeReply();
 
-		await ReviewRequestMiddleware(makeRequest({ id: UUID }, { ...corpoValido, status }) as never, reply.reply as FastifyReply);
+		await ReviewRequestMiddleware(
+			makeRequest({ id: UUID }, { ...corpoValido, status }) as never,
+			reply.reply as FastifyReply
+		);
 
 		expect(reply.statusCode).toBeUndefined();
 	});
@@ -156,9 +159,7 @@ describe("schemas de documentação", () => {
 	it("declaram os status que cada rota responde", () => {
 		// O Swagger é lido por quem integra. Faltando um status, quem consome não
 		// sabe que precisa tratá-lo.
-		expect(Object.keys(ReviewRequestSchema.response)).toEqual(
-			expect.arrayContaining(["200", "400", "404", "409"])
-		);
+		expect(Object.keys(ReviewRequestSchema.response)).toEqual(expect.arrayContaining(["200", "400", "404", "409"]));
 		expect(Object.keys(GetTimelineSchema.response)).toEqual(expect.arrayContaining(["200", "400", "404"]));
 	});
 

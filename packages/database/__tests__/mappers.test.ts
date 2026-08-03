@@ -7,9 +7,9 @@
  * atravessa (vaza sem erro). As duas são silenciosas.
  */
 
+import { toAuthenticatedUser, toRequestDto, toRequestEventDto } from "../src/mappers";
 import type { RequestEventRow, RequestRow } from "../src/schema/requests.schema";
 import type { UserRow } from "../src/schema/users.schema";
-import { toAuthenticatedUser, toRequestDto, toRequestEventDto } from "../src/mappers";
 
 const CRIADA_EM = new Date("2026-07-30T12:00:00.000Z");
 const ATUALIZADA_EM = new Date("2026-07-31T09:30:00.000Z");

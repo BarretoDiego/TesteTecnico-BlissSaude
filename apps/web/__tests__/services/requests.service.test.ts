@@ -39,7 +39,9 @@ afterAll(() => mock.restore());
 
 describe("RequestsService.list", () => {
 	it("consulta /requests sem parâmetros por padrão", async () => {
-		mock.onGet("/requests").reply(200, envelope({ items: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 } }));
+		mock
+			.onGet("/requests")
+			.reply(200, envelope({ items: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 } }));
 
 		await RequestsService.list();
 

@@ -100,12 +100,19 @@ jobs:
           AMBIENTE: ${{ inputs.ambiente || 'dev' }}
           ROLE: ${{ secrets.AWS_ROLE_ARN }}
           BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
+          SENHA: ${{ secrets.DB_PASSWORD }}
+          CHAVE: ${{ secrets.JWT_SIGNING_KEY }}
         run: |
           echo "ambiente=$AMBIENTE" >> "$GITHUB_OUTPUT"
 
           faltando=()
           [ -n "$ROLE" ] || faltando+=("secret \`AWS_ROLE_ARN\`")
           [ -n "$BUCKET" ] || faltando+=("variável \`TF_BACKEND_BUCKET\`")
+          # Os dois têm default no Terraform, e é justamente por isso que são
+          # cobrados aqui: sem eles o deploy sobe com a senha de exemplo e com a
+          # chave de assinatura de desenvolvimento, silenciosamente.
+          [ -n "$SENHA" ] || faltando+=("secret \`DB_PASSWORD\`")
+          [ -n "$CHAVE" ] || faltando+=("secret \`JWT_SIGNING_KEY\`")
           [ -f "infra/terraform/environments/$AMBIENTE.tfvars" ] || faltando+=("arquivo \`infra/terraform/environments/$AMBIENTE.tfvars\`")
 
           if [ ${#faltando[@]} -eq 0 ]; then

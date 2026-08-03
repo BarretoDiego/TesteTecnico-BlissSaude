@@ -190,9 +190,7 @@ describe("ReviewRequestPayloadSchema", () => {
 	});
 
 	it("recusa observação acima de 500 caracteres", () => {
-		expect(
-			ReviewRequestPayloadSchema.safeParse({ ...conferenciaValida, note: "a".repeat(501) }).success
-		).toBe(false);
+		expect(ReviewRequestPayloadSchema.safeParse({ ...conferenciaValida, note: "a".repeat(501) }).success).toBe(false);
 	});
 
 	it("apara a observação", () => {

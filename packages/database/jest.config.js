@@ -24,6 +24,13 @@ module.exports = {
 	testTimeout: 30_000,
 	// `migrate.ts` e `seed.ts` são scripts de linha de comando que abrem conexão
 	// ao serem carregados; `client.ts` é o pool, exercitado nas suítes e2e.
-	collectCoverageFrom: ["src/**/*.ts", "!src/index.ts", "!src/migrate.ts", "!src/seed.ts", "!src/client.ts", "!src/schema/**"],
+	collectCoverageFrom: [
+		"src/**/*.ts",
+		"!src/index.ts",
+		"!src/migrate.ts",
+		"!src/seed.ts",
+		"!src/client.ts",
+		"!src/schema/**",
+	],
 	coverageThreshold: { global: { branches: 95, functions: 95, lines: 95, statements: 95 } },
 };

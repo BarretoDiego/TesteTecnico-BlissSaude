@@ -579,6 +579,14 @@ terraform -chdir=infra/terraform apply -var-file=environments/dev.tfvars
 
 `environments/dev.tfvars` difere de `local.tfvars` apenas em `use_localstack = false`.
 
+### Pelo pipeline
+
+O deploy manual acima é o que o workflow [`deploy.yml`](.github/workflows/deploy.yml) roteiriza: verificação, empacotamento por serviço, plano do Terraform, aprovação no GitHub Environment, `apply`, migrations e smoke test — com relatório consolidado ao fim de cada etapa.
+
+Push em `main` implanta `dev`. `stage` e `prod` só por disparo manual, porque promoção é ato deliberado. Enquanto os segredos de AWS não estiverem configurados, o workflow não falha: publica um relatório dizendo exatamente o que falta.
+
+O CI ([`ci.yml`](.github/workflows/ci.yml)) roda tudo em paralelo — uma suíte por job, um empacotamento por microserviço — e escreve um relatório único no resumo da execução e no comentário do pull request. Detalhes em [`docs/standards/devops/pipeline.md`](docs/standards/devops/pipeline.md).
+
 ### Verificação de paridade de rotas
 
 ```bash

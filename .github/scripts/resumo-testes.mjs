@@ -168,7 +168,7 @@ const corpo = [
 const resumo =
 	total === 0
 		? "Nenhum teste executado — provavelmente a suíte nem chegou a iniciar."
-		: `**${passaram}/${total}** testes passaram em ${suites} suítes · ${duracao(ms)}` +
+		: `**${passaram}/${total}** testes passaram em ${suites} ${suites === 1 ? "suíte" : "suítes"} · ${duracao(ms)}` +
 			(falharam ? ` · **${falharam} falharam**` : "") +
 			(pendentes ? ` · ${pendentes} pendentes` : "") +
 			(cobertura?.total ? ` · linhas em **${cobertura.total.lines.pct.toFixed(1)}%**` : "");

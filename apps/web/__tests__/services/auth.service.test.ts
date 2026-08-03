@@ -79,7 +79,9 @@ describe("AuthService.login", () => {
 	});
 
 	it("propaga credencial inválida sem guardar token", async () => {
-		mock.onPost("/auth/login").reply(...(envelopeErro("INVALID_CREDENTIALS", "Credenciais inválidas") as [number, object]));
+		mock
+			.onPost("/auth/login")
+			.reply(...(envelopeErro("INVALID_CREDENTIALS", "Credenciais inválidas") as [number, object]));
 
 		await expect(AuthService.login({ email: "d@x.test", password: "errada12" })).rejects.toMatchObject({
 			code: "INVALID_CREDENTIALS",

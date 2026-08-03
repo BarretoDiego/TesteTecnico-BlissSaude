@@ -66,7 +66,21 @@ export interface PolicyDocument {
  * cache com uma política que não a cobre e receberia 403. Autorizar no nível da
  * API é o comportamento correto quando o cache está ligado.
  */
-export function buildResourceArn(methodArn: string): string {
+export function buildResourceArn(methodArn: string | undefined): string {
+	/*
+	 * `methodArn` ausente é cenário real, não hipótese defensiva: invocação
+	 * direta da função, teste pelo console da AWS e o LocalStack em algumas
+	 * configurações não o enviam. Sem esta guarda o `split` lançava `TypeError`
+	 * — e lançava dentro do caminho de **negação**, que existe justamente para
+	 * nunca lançar. O efeito era o oposto do pretendido: em vez de um `Deny`
+	 * limpo, o API Gateway recebia 500, e uma credencial ausente passava a
+	 * parecer defeito do serviço.
+	 *
+	 * O curinga sozinho é o que ainda produz uma política válida. Como o efeito
+	 * neste caminho é `Deny`, ele não concede nada.
+	 */
+	if (typeof methodArn !== "string" || methodArn.length === 0) return "*";
+
 	// arn:aws:execute-api:<região>:<conta>:<apiId>/<stage>/<método>/<caminho...>
 	const [arnPart, stagePart] = methodArn.split("/", 2);
 	if (!arnPart || !stagePart) return methodArn;

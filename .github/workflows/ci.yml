@@ -26,7 +26,10 @@ name: CI
 
 on:
   push:
-    branches: [main, dev, stage]
+    # `main` fica de fora: lá quem dispara é o `deploy.yml`, que chama esta
+    # verificação inteira como primeiro passo. Manter os dois gatilhos rodaria
+    # a suíte completa duas vezes por merge, com o mesmo resultado.
+    branches: [dev, stage]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -372,6 +375,9 @@ jobs:
             terraform -chdir=infra/terraform init -backend=false -input=false
             terraform -chdir=infra/terraform validate
             terraform -chdir=infra/terraform fmt -check -recursive
+            # O backend remoto mora fora de infra/terraform — só é copiado para
+            # lá dentro do job de deploy —, então precisa de uma linha própria.
+            terraform fmt -check -recursive .github/terraform
           } 2>&1 | tee "$RUNNER_TEMP/terraform.log"
 
       - if: always()
@@ -489,7 +495,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - run: pnpm --filter @saude-bliss/automation exec playwright install --with-deps chromium
+      - working-directory: apps/automation
+        run: npx playwright install --with-deps chromium
 
       - name: Subir a API agregada
         run: |

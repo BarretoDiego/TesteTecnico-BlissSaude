@@ -19,6 +19,7 @@ Ponto de entrada. A tabela abaixo mapeia **o que você quer fazer** para o arqui
 | como funcionam autenticação e autorização  | [ADR 0005](adr/0005-autenticacao-e-autorizacao.md)                   |
 | adicionar uma rota nova                    | [`standards/backend/rotas.md`](standards/backend/rotas.md)           |
 | entender a estratégia de testes            | [`standards/testing/estrategia.md`](standards/testing/estrategia.md) |
+| entender o CI e o pipeline de deploy       | [`standards/devops/pipeline.md`](standards/devops/pipeline.md)       |
 | ver evidências de execução                 | [`evidence/`](evidence/)                                             |
 
 ## Serviços
