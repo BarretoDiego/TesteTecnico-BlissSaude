@@ -487,16 +487,18 @@ jobs:
           pnpm --filter @saude-bliss/database db:migrate
           pnpm --filter @saude-bliss/database db:seed
 
-      # O cache guarda o Chromium (~150 MB). Sem ele, cada execução baixa o
-      # browser de novo e o download passa de metade do tempo do job.
+      # O cache guarda os browsers (~250 MB com o WebKit). Sem ele, cada execução
+      # baixa tudo de novo e o download passa de metade do tempo do job.
       - uses: actions/cache@v4
         id: cache-browsers
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
+      # WebKit junto do Chromium: é o motor do project `mobile-safari`, e sem ele
+      # os cenários de iPhone nem chegam a rodar.
       - working-directory: apps/automation
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Subir a API agregada
         run: |
@@ -512,10 +514,23 @@ jobs:
           nohup pnpm --filter @saude-bliss/web start > "$RUNNER_TEMP/web.log" 2>&1 &
           curl --retry 40 --retry-delay 2 --retry-connrefused --retry-all-errors -fsS http://localhost:3000 -o /dev/null
 
+      # `pipefail` **obrigatório**: sem ele o status do pipeline é o do `tee`, que
+      # sempre sai zero, e a suíte inteira poderia falhar com o job em verde. Foi
+      # o que aconteceu — sete cenários estourando por timeout e o gate passando.
+      #
+      # Os três projects: o fluxo em desktop e os dois aparelhos móveis. Rodar só
+      # o desktop deixaria o layout de celular sem verificação nenhuma no CI, que
+      # é justamente onde ninguém olha antes de publicar.
       - id: playwright
         continue-on-error: true
         working-directory: apps/automation
-        run: npx playwright test --project=chromium-headless 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+        shell: bash
+        run: |
+          set -o pipefail
+          npx playwright test \
+            --project=chromium-headless \
+            --project=mobile-chrome \
+            --project=mobile-safari 2>&1 | tee "$RUNNER_TEMP/playwright.log"
 
       - if: always()
         run: |
