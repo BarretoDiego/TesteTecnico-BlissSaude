@@ -581,7 +581,9 @@ terraform -chdir=infra/terraform apply -var-file=environments/dev.tfvars
 
 ### Pelo pipeline
 
-O deploy manual acima é o que o workflow [`deploy.yml`](.github/workflows/deploy.yml) roteiriza: verificação, empacotamento por serviço, plano do Terraform, aprovação no GitHub Environment, `apply`, migrations e smoke test — com relatório consolidado ao fim de cada etapa.
+O deploy manual acima é o que o workflow [`deploy.yml`](.github/workflows/deploy.yml) roteiriza: verificação, empacotamento por serviço, plano, aprovação no GitHub Environment, aplicação, migrations e smoke test — com relatório consolidado ao fim de cada etapa.
+
+O input `trilha` escolhe **quem gerencia o ambiente**: Terraform (padrão) ou Serverless Framework. Independentemente da escolha, o pipeline exercita as **duas** a cada deploy — dois ensaios em paralelo contra LocalStack, cada um provisionando o sistema inteiro e passando pelo mesmo smoke test. Trilha alternativa que nunca roda não é alternativa.
 
 Push em `main` implanta `dev`. `stage` e `prod` só por disparo manual, porque promoção é ato deliberado. Enquanto os segredos de AWS não estiverem configurados, o workflow não falha: publica um relatório dizendo exatamente o que falta.
 

@@ -31,7 +31,13 @@ runs:
         # O cache é do **store** do pnpm, não do node_modules: o store é
         # compartilhado entre todos os pacotes do monorepo e sobrevive à
         # mudança de um manifesto qualquer.
-        cache: pnpm
+        #
+        # Vazio quando não se instala nada: o passo `post` do setup-node tenta
+        # salvar o store ao fim do job e **falha o job inteiro** se o diretório
+        # não existe — que é exatamente o caso de quem pediu `instalar: false`.
+        # O sintoma é péssimo de ler: o job fica vermelho depois de todos os
+        # passos terem passado, com erro de validação de caminho de cache.
+        cache: ${{ inputs.instalar == 'true' && 'pnpm' || '' }}
 
     - if: inputs.instalar == 'true'
       shell: bash

@@ -558,18 +558,18 @@ jobs:
         run: exit 1
 
   # ---------------------------------------------------------------------------
-  # Ensaio de deploy.
+  # Ensaio de deploy — trilha do Terraform.
   #
-  # Provisiona o sistema inteiro no LocalStack com o mesmo Terraform que vai para
-  # a AWS, aplica migrations e roda o smoke test. É a diferença entre "o código
+  # Provisiona o sistema inteiro no LocalStack com o mesmo HCL que vai para a
+  # AWS, aplica migrations e roda o smoke test. É a diferença entre "o código
   # compila" e "o sistema sobe".
   #
   # Opt-in: leva minutos e depende de Docker-in-Docker. Roda por
   # `workflow_dispatch`, quando o `deploy.yml` chama, ou com a etiqueta
   # `ensaio-de-deploy` no pull request.
   # ---------------------------------------------------------------------------
-  ensaio:
-    name: Ensaio de deploy (LocalStack)
+  ensaio-terraform:
+    name: Ensaio de deploy · Terraform
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
@@ -605,17 +605,17 @@ jobs:
       - if: always()
         run: |
           node .github/scripts/fragmento.mjs \
-            --id ensaio --ordem 80 --titulo "Ensaio de deploy (LocalStack)" \
+            --id ensaio-terraform --ordem 80 --titulo "Ensaio de deploy · Terraform (LocalStack)" \
             --resultado "${{ steps.deploy.outcome }}" \
             --log "$RUNNER_TEMP/ensaio.log" --linhas-do-log 80 \
-            --resumo-ok "Sistema provisionado e smoke test verde — API Gateway, quatro Lambdas, segredos e migrations." \
-            --resumo-falha "O sistema não subiu ponta a ponta. O log tem o passo exato onde parou." \
-            --detalhe "Mesmo HCL que provisiona a AWS, com \`use_localstack = true\`. O que o ensaio **não** cobre: o authorizer na borda, que o API Gateway do LocalStack Community não executa — o smoke detecta isso e valida o authorizer por invocação direta."
+            --resumo-ok "Sistema provisionado pelo Terraform e smoke test verde — API Gateway, quatro Lambdas, segredos e migrations." \
+            --resumo-falha "A trilha do Terraform não subiu ponta a ponta. O log tem o passo exato onde parou." \
+            --detalhe-arquivo .github/relatorio/ensaio-terraform.md
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: relatorio-ensaio
+          name: relatorio-ensaio-terraform
           path: relatorio/
           retention-days: 7
 
@@ -626,9 +626,86 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ensaio-evidencias
+          name: ensaio-terraform-evidencias
           path: |
             ${{ runner.temp }}/outputs.json
+            ${{ runner.temp }}/localstack.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - if: steps.deploy.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Ensaio de deploy — trilha do Serverless Framework.
+  #
+  # Roda **junto** com o ensaio do Terraform, em runner próprio. As duas trilhas
+  # provisionam o mesmo sistema por caminhos diferentes: se só uma for exercitada,
+  # a outra apodrece em silêncio e a escolha entre elas deixa de ser real.
+  #
+  # Stage `sls` contra o `local` do Terraform — os nomes de recurso levam o
+  # stage, então as duas coexistem. Aqui nem isso é necessário: cada job tem o
+  # próprio LocalStack. O stage separado é o que permite subir as duas na mesma
+  # máquina e comparar lado a lado.
+  # ---------------------------------------------------------------------------
+  ensaio-serverless:
+    name: Ensaio de deploy · Serverless
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      inputs.ensaio-de-deploy ||
+      contains(github.event.pull_request.labels.*.name, 'ensaio-de-deploy')
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Subir a infraestrutura local
+        run: |
+          cp .env.example .env
+          docker compose up -d
+          ./scripts/localstack/wait-ready.sh
+
+      # build → artefatos com nome próprio → sls deploy → migrations → seed →
+      # smoke. O smoke é o mesmo das duas trilhas, resolvendo o alvo por
+      # variável — o que faz dele uma comparação, e não dois testes parecidos.
+      - id: deploy
+        continue-on-error: true
+        run: pnpm deploy:sls 2>&1 | tee "$RUNNER_TEMP/ensaio-sls.log"
+
+      - name: Outputs do stack
+        if: always()
+        continue-on-error: true
+        working-directory: apps/api
+        run: npx serverless info --stage sls --verbose > "$RUNNER_TEMP/sls-info.txt" 2>&1
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id ensaio-serverless --ordem 81 --titulo "Ensaio de deploy · Serverless (LocalStack)" \
+            --resultado "${{ steps.deploy.outcome }}" \
+            --log "$RUNNER_TEMP/ensaio-sls.log" --linhas-do-log 80 \
+            --resumo-ok "Sistema provisionado pelo Serverless Framework e smoke test verde — mesma topologia, mesmo artefato, outra ferramenta." \
+            --resumo-falha "A trilha do Serverless não subiu ponta a ponta. O log tem o passo exato onde parou." \
+            --detalhe-arquivo .github/relatorio/ensaio-serverless.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-ensaio-serverless
+          path: relatorio/
+          retention-days: 7
+
+      - name: Logs do LocalStack
+        if: failure()
+        run: docker compose logs --no-color > "$RUNNER_TEMP/localstack.log" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ensaio-serverless-evidencias
+          path: |
+            ${{ runner.temp }}/sls-info.txt
             ${{ runner.temp }}/localstack.log
           retention-days: 7
           if-no-files-found: ignore
@@ -651,7 +728,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: always()
-    needs: [plano, formato, tipos, rotas, testes, empacotar, terraform, web, automacao, ensaio]
+    needs:
+      [plano, formato, tipos, rotas, testes, empacotar, terraform, web, automacao, ensaio-terraform, ensaio-serverless]
 
     permissions:
       contents: read
@@ -668,6 +746,14 @@ jobs:
           pattern: relatorio-*
           merge-multiple: true
           path: relatorio
+
+      # A fonte aqui é o resultado do **job**, não o do passo. Um job pode ficar
+      # vermelho sem nenhum passo reportado ter falhado — cache, upload, tempo
+      # limite — e sem esta tabela o relatório diria "tudo certo".
+      - name: Situação dos jobs
+        env:
+          RESULTADOS: ${{ toJSON(needs) }}
+        run: node .github/scripts/resumo-jobs.mjs --ordem 1
 
       - id: consolidar
         run: |

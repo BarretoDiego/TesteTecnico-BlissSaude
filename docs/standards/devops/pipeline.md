@@ -27,31 +27,51 @@ Dois workflows: [`ci.yml`](../../../.github/workflows/ci.yml) verifica, [`deploy
 | `terraform`         | HCL válido e formatado                                            | —          |
 | `web`               | ESLint e `next build` do backoffice                               | —          |
 | `automacao`         | a pilha sobe e a conferência funciona ponta a ponta               | —          |
-| `ensaio`            | o sistema **implanta** — Terraform contra LocalStack + smoke      | —          |
+| `ensaio-terraform`  | o sistema **implanta** pelo Terraform, contra LocalStack + smoke  | —          |
+| `ensaio-serverless` | o sistema **implanta** pelo Serverless, contra LocalStack + smoke | —          |
 | `relatorio`         | consolida tudo e falha se algo falhou                             | todos      |
 
-`relatorio` é o job para marcar como obrigatório na proteção de branch: um nome só, que não precisa ser atualizado quando um job novo aparece.
+`relatorio` é o job para marcar como obrigatório na proteção de branch: um nome só, que não precisa ser atualizado quando um job novo aparece. Ele publica também uma tabela com o resultado de cada **job** — um job pode ficar vermelho sem nenhum passo reportado ter falhado (cache, upload, tempo limite), e sem essa tabela o relatório diria "tudo certo" numa execução vermelha.
 
-### O ensaio de deploy é opt-in
+### Os dois ensaios de deploy
 
-Provisiona o sistema inteiro no LocalStack com o mesmo HCL que vai para a AWS. Leva minutos e depende de Docker dentro do runner, então não roda em todo pull request. Para ligar:
+Rodam **em paralelo**, em runners separados, cada um com o próprio LocalStack. Provisionam o mesmo sistema por caminhos diferentes: `ensaio-terraform` roda `pnpm deploy:local` (stage `local`), `ensaio-serverless` roda `pnpm deploy:sls` (stage `sls`).
+
+Três coisas os mantêm comparáveis, e não apenas parecidos: o artefato é o mesmo zip do esbuild, o smoke é o mesmo roteiro resolvendo o alvo por `API_BASE_URL`, e a URL tem o mesmo formato. Uma trilha alternativa que nunca roda não é alternativa — é código morto que só falha no dia em que alguém precisa dela.
+
+São opt-in: levam minutos e dependem de Docker dentro do runner. Para ligar:
 
 - etiqueta `ensaio-de-deploy` no pull request;
 - `workflow_dispatch` (vem ligado);
-- chamada a partir do `deploy.yml`.
+- chamada a partir do `deploy.yml` — que sempre liga os dois.
 
-O que ele **não** cobre: o authorizer aplicado na borda. O API Gateway do LocalStack Community não executa custom authorizers — o smoke detecta isso e valida o authorizer por invocação direta, em vez de fingir que passou.
+O que eles **não** cobrem: o authorizer aplicado na borda. O API Gateway do LocalStack Community não executa custom authorizers — o smoke detecta isso e valida o authorizer por invocação direta, em vez de fingir que passou.
 
 ## Deploy
 
 ```
-contexto ─┬─ verificação (o CI inteiro)  ─┐
-          └─ empacotar (um job/serviço) ──┴─ plano ─ [aprovação] ─ aplicar ─ pós-deploy ─ relatório
+contexto ─┬─ verificação (o CI inteiro, com os dois ensaios) ─┐
+          └─ empacotar (um job/serviço) ────────────────────┴─ plano|pacote ─ [aprovação] ─ aplicar ─ pós-deploy ─ relatório
 ```
 
 Disparos: push em `main` implanta `dev`; `stage` e `prod` só por `workflow_dispatch`. Promoção é ato deliberado — merge não deve implantar produção por efeito colateral.
 
 O `plano` roda **antes** da aprovação, porque é o plano que a pessoa precisa ler para decidir. O `aplicar` consome o plano salvo como artefato, e não um recalculado depois do aceite: aplicar algo diferente do que foi revisado é o modo de falha que o portão existe para evitar.
+
+### Qual trilha gerencia o ambiente
+
+O input `trilha` escolhe entre `terraform` (padrão) e `serverless`. A escolhida assume o ambiente e é a única a tocá-lo; a outra continua sendo exercitada a cada deploy pelos ensaios contra LocalStack, que a verificação liga sempre.
+
+| Trilha       | Equivalente ao plano | Estado         | Provisiona banco |
+| ------------ | -------------------- | -------------- | ---------------- |
+| `terraform`  | `terraform plan`     | arquivo no S3  | sim              |
+| `serverless` | `sls package`        | CloudFormation | não              |
+
+A trilha do Serverless modela a camada de computação — Lambdas, API Gateway, authorizer, segredos, logs — e grava o segredo de credencial apontando para um Postgres que já exista (`SLS_DB_HOST`). Modelar RDS lá duplicaria o `rds-module` do Terraform, e duas definições do mesmo banco é como se chega a dois donos do mesmo recurso.
+
+**Nunca aponte as duas para o mesmo ambiente.** Cada uma mantém o próprio estado, e o resultado é drift e remoção acidental. Ver [ADR 0002](../../adr/0002-serverless-framework-vs-terraform.md).
+
+O `pos-deploy` (migrations + smoke) serve às duas: o alvo vem de quem tiver aplicado. É de propósito — o smoke é a definição de "o sistema subiu", e ela não pode depender da ferramenta que subiu, senão as trilhas param de ser comparáveis.
 
 O relatório do plano separa criação de destruição e destaca o que remove recurso com estado. Recriação de `aws_api_gateway_deployment` não conta como perigosa — ela acontece a cada mudança de rota por definição, e um aviso que aparece sempre deixa de ser lido.
 
@@ -59,16 +79,17 @@ O relatório do plano separa criação de destruição e destaca o que remove re
 
 Sem isto, o `deploy.yml` **não falha**: publica um relatório dizendo o que falta e encerra.
 
-| Onde                | Nome                     | Para quê                                                              |
-| ------------------- | ------------------------ | --------------------------------------------------------------------- |
-| Secret              | `AWS_ROLE_ARN`           | role assumida por OIDC — sem chave de longa duração                   |
-| Secret              | `DB_PASSWORD`            | `TF_VAR_db_password`                                                  |
-| Secret              | `JWT_SIGNING_KEY`        | `TF_VAR_jwt_signing_key`, e a chave que o smoke usa para emitir token |
-| Secret (opcional)   | `DATABASE_MIGRATION_URL` | caminho até o banco para rodar as migrations                          |
-| Variable            | `TF_BACKEND_BUCKET`      | bucket do estado do Terraform                                         |
-| Variable (opcional) | `TF_BACKEND_TABLE`       | tabela DynamoDB de trava                                              |
-| Variable (opcional) | `AWS_REGION`             | padrão `us-east-1`                                                    |
-| Environment         | `dev`, `stage`, `prod`   | onde vive a regra de aprovação                                        |
+| Onde                | Nome                     | Para quê                                                               |
+| ------------------- | ------------------------ | ---------------------------------------------------------------------- |
+| Secret              | `AWS_ROLE_ARN`           | role assumida por OIDC — sem chave de longa duração                    |
+| Secret              | `DB_PASSWORD`            | `TF_VAR_db_password`                                                   |
+| Secret              | `JWT_SIGNING_KEY`        | `TF_VAR_jwt_signing_key`, e a chave que o smoke usa para emitir token  |
+| Secret (opcional)   | `DATABASE_MIGRATION_URL` | caminho até o banco para rodar as migrations                           |
+| Variable            | `TF_BACKEND_BUCKET`      | bucket do estado — só na trilha `terraform`                            |
+| Variable (opcional) | `TF_BACKEND_TABLE`       | tabela DynamoDB de trava                                               |
+| Variable (opcional) | `AWS_REGION`             | padrão `us-east-1`                                                     |
+| Variable            | `SLS_DB_HOST`            | host do Postgres — só na trilha `serverless`, que não provisiona banco |
+| Environment         | `dev`, `stage`, `prod`   | onde vive a regra de aprovação                                         |
 
 O estado do Terraform vive no S3 **só no pipeline**: `.github/terraform/backend-s3.tf` é copiado para `infra/terraform/` antes do `init`. Na máquina o arquivo não existe e o backend é local, que é o que faz `pnpm deploy:local` funcionar sem credencial de nuvem nenhuma.
 

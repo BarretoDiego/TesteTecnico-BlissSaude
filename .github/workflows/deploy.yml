@@ -1,14 +1,29 @@
 # =============================================================================
-# Deploy — provisiona um ambiente com Terraform e prova que ele subiu.
+# Deploy — provisiona um ambiente e prova que ele subiu.
 #
 # ## Forma
 #
-#   contexto ─┬─ verificação (chama o CI inteiro)  ─┐
-#             └─ empacotar (um job por serviço)  ───┼─ plano ─ [aprovação] ─ aplicar ─ pós-deploy ─ relatório
+#   contexto ─┬─ verificação (chama o CI inteiro, com as duas trilhas em ensaio)
+#             └─ empacotar (um job por serviço) ─┬─ plano/pacote ─ [aprovação] ─ aplicar ─ pós-deploy ─ relatório
 #
 # Verificação e empacotamento correm juntos: são independentes, e serializá-los
 # só somaria os dois tempos. O que **não** corre em paralelo é plano → aplicar →
 # smoke: cada um depende do resultado do anterior de verdade.
+#
+# ## Duas trilhas, uma escolhida
+#
+# `trilha` decide **quem gerencia o deploy** deste ambiente: Terraform (padrão)
+# ou Serverless Framework. As duas provisionam o mesmo sistema; a escolhida
+# assume o ambiente, e é a única a tocá-lo.
+#
+# Independentemente da escolha, **as duas são exercitadas** a cada deploy: a
+# verificação chamada aqui roda os dois ensaios contra LocalStack, em paralelo.
+# Uma trilha alternativa que nunca roda não é alternativa — é código morto que
+# só falha no dia em que alguém precisa dela.
+#
+# **Nunca aponte as duas para o mesmo ambiente.** Cada uma mantém o próprio
+# estado (arquivo no S3 contra CloudFormation), e dois donos do mesmo recurso
+# produzem drift e remoção acidental. Ver `docs/adr/0002`.
 #
 # ## Portões
 #
@@ -16,10 +31,6 @@
 # Configure revisor obrigatório em `stage` e `prod` — nada neste arquivo garante
 # isso, e é assim de propósito: quem aprova produção é política do repositório,
 # não literal de YAML.
-#
-# ## Terraform é a única coisa que toca infraestrutura
-#
-# O Serverless Framework é emulador local e packager. Ver `docs/adr/0002`.
 # =============================================================================
 name: Deploy
 
@@ -31,6 +42,11 @@ on:
         type: choice
         options: [dev, stage, prod]
         default: dev
+      trilha:
+        description: Quem gerencia o deploy deste ambiente. As duas são exercitadas na verificação de qualquer forma.
+        type: choice
+        options: [terraform, serverless]
+        default: terraform
       somente-plano:
         description: Parar depois do plano, sem aplicar. Serve para revisar mudança de infraestrutura.
         type: boolean
@@ -83,6 +99,7 @@ jobs:
 
     outputs:
       ambiente: ${{ steps.resolver.outputs.ambiente }}
+      trilha: ${{ steps.resolver.outputs.trilha }}
       pronto: ${{ steps.resolver.outputs.pronto }}
       servicos: ${{ steps.matriz.outputs.servicos }}
 
@@ -98,28 +115,40 @@ jobs:
           # deliberado, por `workflow_dispatch` — merge não deve implantar
           # produção por efeito colateral.
           AMBIENTE: ${{ inputs.ambiente || 'dev' }}
+          # Terraform é o padrão por decisão registrada (ADR 0002), não por
+          # acaso: é ele que conhece RDS, VPC e o resto que o Serverless não
+          # modela. A escolha existe para poder exercer a alternativa, não para
+          # alternar sem critério.
+          TRILHA: ${{ inputs.trilha || 'terraform' }}
           ROLE: ${{ secrets.AWS_ROLE_ARN }}
           BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
           SENHA: ${{ secrets.DB_PASSWORD }}
           CHAVE: ${{ secrets.JWT_SIGNING_KEY }}
         run: |
           echo "ambiente=$AMBIENTE" >> "$GITHUB_OUTPUT"
+          echo "trilha=$TRILHA" >> "$GITHUB_OUTPUT"
 
           faltando=()
           [ -n "$ROLE" ] || faltando+=("secret \`AWS_ROLE_ARN\`")
-          [ -n "$BUCKET" ] || faltando+=("variável \`TF_BACKEND_BUCKET\`")
           # Os dois têm default no Terraform, e é justamente por isso que são
           # cobrados aqui: sem eles o deploy sobe com a senha de exemplo e com a
           # chave de assinatura de desenvolvimento, silenciosamente.
           [ -n "$SENHA" ] || faltando+=("secret \`DB_PASSWORD\`")
           [ -n "$CHAVE" ] || faltando+=("secret \`JWT_SIGNING_KEY\`")
-          [ -f "infra/terraform/environments/$AMBIENTE.tfvars" ] || faltando+=("arquivo \`infra/terraform/environments/$AMBIENTE.tfvars\`")
+
+          # O bucket de estado é exigência da trilha do Terraform. A trilha do
+          # Serverless guarda o estado dela no CloudFormation, e cobrar um
+          # recurso que ela não usa impediria o deploy por um motivo inventado.
+          if [ "$TRILHA" = "terraform" ]; then
+            [ -n "$BUCKET" ] || faltando+=("variável \`TF_BACKEND_BUCKET\`")
+            [ -f "infra/terraform/environments/$AMBIENTE.tfvars" ] || faltando+=("arquivo \`infra/terraform/environments/$AMBIENTE.tfvars\`")
+          fi
 
           if [ ${#faltando[@]} -eq 0 ]; then
             echo "pronto=true" >> "$GITHUB_OUTPUT"
             situacao=ok
-            resumo="Alvo **$AMBIENTE** · commit \`${GITHUB_SHA:0:7}\` · estado no S3 \`$BUCKET\`."
-            detalhe="O plano roda em seguida. O \`apply\` só acontece depois da aprovação configurada no GitHub Environment \`$AMBIENTE\`."
+            resumo="Alvo **$AMBIENTE** · trilha **$TRILHA** · commit \`${GITHUB_SHA:0:7}\`."
+            detalhe=$(printf 'O plano roda em seguida. O `apply` só acontece depois da aprovação configurada no GitHub Environment `%s`.\n\nA trilha **%s** gerencia este ambiente; a outra é exercitada contra LocalStack na verificação, em paralelo — as duas rodam a cada deploy.' "$AMBIENTE" "$TRILHA")
           else
             echo "pronto=false" >> "$GITHUB_OUTPUT"
             situacao=alerta
@@ -141,13 +170,17 @@ jobs:
   # ---------------------------------------------------------------------------
   # A mesma verificação do CI, inteira. Reutilizada em vez de reescrita: uma
   # cópia reduzida aqui é como um deploy passa a publicar o que o CI barraria.
+  #
+  # `ensaio-de-deploy: true` liga os dois ensaios contra LocalStack — Terraform e
+  # Serverless, em runners separados, ao mesmo tempo. É o que garante que a
+  # trilha não escolhida continue funcionando no dia em que for escolhida.
   # ---------------------------------------------------------------------------
   verificacao:
     name: Verificação
     uses: ./.github/workflows/ci.yml
     if: inputs.pular-verificacao != true
     with:
-      ensaio-de-deploy: false
+      ensaio-de-deploy: true
 
   # ---------------------------------------------------------------------------
   # Empacotamento com o alvo certo: `build:dev`, `build:stage`, `build:prod`.
@@ -209,7 +242,7 @@ jobs:
     name: Plano do Terraform
     runs-on: ubuntu-latest
     needs: [contexto, empacotar]
-    if: needs.contexto.outputs.pronto == 'true'
+    if: needs.contexto.outputs.pronto == 'true' && needs.contexto.outputs.trilha == 'terraform'
     timeout-minutes: 20
 
     env:
@@ -301,7 +334,7 @@ jobs:
   # e segredos por ambiente são configurados lá, não aqui.
   # ---------------------------------------------------------------------------
   aplicar:
-    name: Aplicar em ${{ needs.contexto.outputs.ambiente }}
+    name: Aplicar em ${{ needs.contexto.outputs.ambiente }} · Terraform
     runs-on: ubuntu-latest
     needs: [contexto, plano, verificacao]
     if: always() && needs.plano.result == 'success' && inputs.somente-plano != true && (needs.verificacao.result == 'success' || needs.verificacao.result == 'skipped')
@@ -400,7 +433,181 @@ jobs:
         run: exit 1
 
   # ---------------------------------------------------------------------------
+  # Trilha do Serverless — empacotamento do stack.
+  #
+  # Equivalente ao `plano` do Terraform: valida a configuração e monta o
+  # CloudFormation **sem** criar nada, para que a aprovação venha depois de algo
+  # verificado. `sls package` é o mais perto de um `plan` que a ferramenta tem.
+  # ---------------------------------------------------------------------------
+  pacote-serverless:
+    name: Pacote do Serverless
+    runs-on: ubuntu-latest
+    needs: [contexto, empacotar]
+    if: needs.contexto.outputs.pronto == 'true' && needs.contexto.outputs.trilha == 'serverless'
+    timeout-minutes: 20
+
+    env:
+      AMBIENTE: ${{ needs.contexto.outputs.ambiente }}
+      # Casa com o runtime que o Terraform declara. Sem isto o `serverless.yml`
+      # cai no default `nodejs20.x` e as duas trilhas passam a entregar sistemas
+      # sutilmente diferentes — que é o que torna a comparação inútil.
+      SLS_LAMBDA_RUNTIME: nodejs22.x
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      JWT_SECRET: ${{ secrets.JWT_SIGNING_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lambda-*
+          path: ${{ runner.temp }}/artefatos
+
+      # O Serverless usa o **nome do arquivo** como chave no S3. Os quatro
+      # bundles se chamam `function.zip`, então apontá-los direto faz os quatro
+      # subirem para a mesma chave: o último vence e todas as funções passam a
+      # rodar o mesmo código. Copiar com nome por serviço resolve na origem.
+      - name: Preparar os artefatos
+        run: |
+          mkdir -p apps/api/.artifacts
+          for caminho in "$RUNNER_TEMP"/artefatos/lambda-*/function.zip; do
+            servico=$(basename "$(dirname "$caminho")" | sed 's/^lambda-//')
+            cp "$caminho" "apps/api/.artifacts/$servico.zip"
+            printf '%s → apps/api/.artifacts/%s.zip\n' "$servico" "$servico"
+          done
+
+      - id: package
+        continue-on-error: true
+        working-directory: apps/api
+        run: npx serverless package --stage "$AMBIENTE" 2>&1 | tee "$RUNNER_TEMP/pacote-sls.log"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id pacote-serverless --ordem 20 --titulo "Pacote do Serverless · $AMBIENTE" \
+            --resultado "${{ steps.package.outcome }}" \
+            --log "$RUNNER_TEMP/pacote-sls.log" \
+            --resumo-ok "CloudFormation montado e artefatos prontos — quatro funções, uma API Gateway, dois segredos." \
+            --resumo-falha "A configuração do Serverless não fecha. Nada foi criado na conta." \
+            --detalhe "O \`sls package\` é o equivalente de um plano nesta trilha: valida a configuração inteira e gera o template sem tocar em recurso nenhum."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-pacote-serverless
+          path: relatorio/
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: steps.package.outcome == 'success'
+        with:
+          name: pacote-serverless
+          path: apps/api/.serverless/
+          retention-days: 30
+
+      - if: steps.package.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Trilha do Serverless — deploy.
+  #
+  # Mesmo portão do `aplicar` do Terraform: o `environment` é quem exige revisor.
+  # O estado desta trilha vive no CloudFormation, então não há backend a
+  # configurar — e é por isso que ela não pede o bucket do Terraform.
+  # ---------------------------------------------------------------------------
+  aplicar-serverless:
+    name: Aplicar em ${{ needs.contexto.outputs.ambiente }} · Serverless
+    runs-on: ubuntu-latest
+    needs: [contexto, pacote-serverless, verificacao]
+    if: always() && needs.pacote-serverless.result == 'success' && inputs.somente-plano != true && (needs.verificacao.result == 'success' || needs.verificacao.result == 'skipped')
+    timeout-minutes: 30
+    environment: ${{ needs.contexto.outputs.ambiente }}
+
+    outputs:
+      api: ${{ steps.saidas.outputs.api }}
+
+    env:
+      AMBIENTE: ${{ needs.contexto.outputs.ambiente }}
+      SLS_LAMBDA_RUNTIME: nodejs22.x
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      JWT_SECRET: ${{ secrets.JWT_SIGNING_KEY }}
+      POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      # Esta trilha **não provisiona banco** — ela grava o segredo apontando
+      # para um que já exista. Ver o detalhe no relatório.
+      SLS_DB_HOST: ${{ vars.SLS_DB_HOST }}
+      POSTGRES_USER: ${{ vars.POSTGRES_USER || 'saudebliss' }}
+      POSTGRES_DB: ${{ vars.POSTGRES_DB || 'saudebliss' }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lambda-*
+          path: ${{ runner.temp }}/artefatos
+
+      - name: Preparar os artefatos
+        run: |
+          mkdir -p apps/api/.artifacts
+          for caminho in "$RUNNER_TEMP"/artefatos/lambda-*/function.zip; do
+            servico=$(basename "$(dirname "$caminho")" | sed 's/^lambda-//')
+            cp "$caminho" "apps/api/.artifacts/$servico.zip"
+          done
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - id: deploy
+        continue-on-error: true
+        working-directory: apps/api
+        run: npx serverless deploy --stage "$AMBIENTE" 2>&1 | tee "$RUNNER_TEMP/deploy-sls.log"
+
+      - id: saidas
+        if: steps.deploy.outcome == 'success'
+        working-directory: apps/api
+        run: |
+          npx serverless info --stage "$AMBIENTE" --verbose > "$RUNNER_TEMP/sls-info.txt" 2>&1
+          # O output vem indentado sob `Stack Outputs:` — daí o `[[:space:]]*`.
+          url=$(sed -n 's/^[[:space:]]*ApiBaseUrl:[[:space:]]*//p' "$RUNNER_TEMP/sls-info.txt" | tail -1)
+          echo "api=$url" >> "$GITHUB_OUTPUT"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id aplicar-serverless --ordem 30 --titulo "Aplicação em ${{ env.AMBIENTE }} · Serverless" \
+            --resultado "${{ steps.deploy.outcome }}" \
+            --log "$RUNNER_TEMP/deploy-sls.log" \
+            --resumo-ok "Stack publicado pelo CloudFormation. API em \`${{ steps.saidas.outputs.api }}\`." \
+            --resumo-falha "O deploy falhou. O CloudFormation faz rollback sozinho — confira o estado do stack antes de repetir." \
+            --detalhe-arquivo .github/relatorio/trilha-serverless.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-aplicar-serverless
+          path: relatorio/
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: steps.deploy.outcome == 'success'
+        with:
+          name: serverless-info
+          path: ${{ runner.temp }}/sls-info.txt
+          retention-days: 30
+
+      - if: steps.deploy.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
   # Pós-deploy: migrations e smoke.
+  #
+  # Serve às duas trilhas — o alvo vem de quem tiver aplicado. É de propósito:
+  # o smoke é a definição de "o sistema subiu", e ela não pode depender da
+  # ferramenta que subiu, senão as duas trilhas param de ser comparáveis.
   #
   # Um job só, e não dois, porque a connection string sai do estado do Terraform
   # e não deve trafegar em `outputs` de job — output de job não é criptografado.
@@ -409,16 +616,18 @@ jobs:
   pos-deploy:
     name: Migrations e smoke
     runs-on: ubuntu-latest
-    needs: [contexto, aplicar]
-    if: needs.aplicar.result == 'success'
+    needs: [contexto, aplicar, aplicar-serverless]
+    if: always() && (needs.aplicar.result == 'success' || needs.aplicar-serverless.result == 'success')
     timeout-minutes: 20
     environment: ${{ needs.contexto.outputs.ambiente }}
 
     env:
       AMBIENTE: ${{ needs.contexto.outputs.ambiente }}
-      API_BASE_URL: ${{ needs.aplicar.outputs.api }}
-      # O smoke emite um token assinado com a mesma chave que o Terraform grava
-      # no Secrets Manager. Chaves diferentes dariam 403 sem indicar a causa.
+      TRILHA: ${{ needs.contexto.outputs.trilha }}
+      # Uma das duas está vazia — a trilha não escolhida nem rodou.
+      API_BASE_URL: ${{ needs.aplicar.outputs.api || needs.aplicar-serverless.outputs.api }}
+      # O smoke emite um token assinado com a mesma chave que a trilha grava no
+      # Secrets Manager. Chaves diferentes dariam 403 sem indicar a causa.
       JWT_SECRET: ${{ secrets.JWT_SIGNING_KEY }}
 
     steps:
@@ -480,7 +689,7 @@ jobs:
             --log "$RUNNER_TEMP/smoke.log" --linhas-do-log 60 \
             --resumo-ok "A API implantada responde: rotas públicas, authorizer na borda, criação, consulta, filtros, conferência e rastreabilidade do requestId." \
             --resumo-falha "A API está no ar mas não se comporta como esperado — o log mostra qual asserção quebrou." \
-            --detalhe "Alvo: \`${{ env.API_BASE_URL }}\`"
+            --detalhe "Alvo: \`${{ env.API_BASE_URL }}\` · provisionado pela trilha **${{ env.TRILHA }}**. O mesmo roteiro roda contra as duas trilhas, com as mesmas asserções — é o que torna a escolha entre elas uma escolha, e não uma aposta."
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -501,7 +710,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: always()
-    needs: [contexto, verificacao, empacotar, plano, aplicar, pos-deploy]
+    needs: [contexto, verificacao, empacotar, plano, aplicar, pacote-serverless, aplicar-serverless, pos-deploy]
 
     steps:
       - uses: actions/checkout@v4
@@ -511,6 +720,14 @@ jobs:
           pattern: relatorio-*
           merge-multiple: true
           path: relatorio
+
+      # Resultado do **job**, não do passo: um job pode ficar vermelho sem que
+      # nenhum passo reportado tenha falhado, e sem esta tabela o relatório
+      # diria "tudo certo" numa execução vermelha.
+      - name: Situação dos jobs
+        env:
+          RESULTADOS: ${{ toJSON(needs) }}
+        run: node .github/scripts/resumo-jobs.mjs --ordem 1
 
       - run: |
           node .github/scripts/consolidar.mjs \
