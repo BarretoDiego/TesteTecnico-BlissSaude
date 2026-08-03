@@ -363,6 +363,13 @@ horizontalmente, as tabelas rolam dentro da própria moldura com a coluna de aç
 grudada na borda direita, e os modais cabem na viewport. Verificado a cada
 execução pelos cenários móveis — ver [Automação da conferência](#-automação-da-conferência).
 
+O estado de filtro e página é escrito pela **History API nativa**
+(`web/src/lib/navigation.ts`), e não por `router.replace`: numa rota
+pré-renderizada estaticamente, trocar só a query da mesma rota é descartado no
+build de produção — os controles funcionavam em desenvolvimento e não funcionavam
+depois do deploy. Quem encontrou foi a suíte Playwright do CI, que roda contra o
+build.
+
 ---
 
 ## 📡 Endpoints

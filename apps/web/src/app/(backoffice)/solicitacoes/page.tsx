@@ -14,6 +14,8 @@ import { RequestsService } from "~/services/requests.service";
 function SolicitacoesContent() {
 	const searchParams = useSearchParams();
 	const [result, setResult] = useState<ListRequestsResult | null>(null);
+	/** Consulta que produziu o `result` que está na tela. Ver `data-query` abaixo. */
+	const [loadedQuery, setLoadedQuery] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [requestId, setRequestId] = useState<string>();
 	const [loading, setLoading] = useState(true);
@@ -26,6 +28,7 @@ function SolicitacoesContent() {
 			const query = Object.fromEntries(searchParams.entries());
 			const data = await RequestsService.list(query);
 			setResult(data);
+			setLoadedQuery(searchParams.toString());
 		} catch (caught) {
 			setError(caught instanceof ApiError ? caught.message : "Falha ao carregar solicitações");
 			if (caught instanceof ApiError) setRequestId(caught.requestId);
@@ -46,15 +49,19 @@ function SolicitacoesContent() {
 	 * lesse ali pegaria o resultado antigo. `data-query` diz **qual** consulta os
 	 * dados exibidos representam, então a espera é por conteúdo correto e não só
 	 * por ausência de carregamento.
+	 *
+	 * O valor vem de `loadedQuery` — a consulta que **produziu** as linhas na tela
+	 * — e não da URL corrente. A distinção não é preciosismo: mudar a query pela
+	 * History API redesenha na hora, então existe um render em que o endereço já é
+	 * o novo, `loading` ainda é falso e as linhas ainda são as antigas. Lendo da
+	 * URL, o atributo anunciava dados que não estavam lá.
 	 */
-	const query = searchParams.toString();
-
 	return (
 		<div
 			className="space-y-6"
 			data-testid="requests-list"
 			data-loading={String(loading)}
-			data-query={loading ? "" : query}
+			data-query={loading ? "" : loadedQuery}
 		>
 			<div className="flex items-center justify-between">
 				<div>

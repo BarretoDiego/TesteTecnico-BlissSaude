@@ -12,8 +12,9 @@
  */
 
 import type { Pagination as PaginationDto } from "@saude-bliss/contracts";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
+import { replaceSearchParams } from "~/lib/navigation";
 import { cn } from "~/lib/utils";
 
 /** Tamanhos oferecidos. O teto de 100 é o mesmo que o schema da API aceita. */
@@ -46,7 +47,6 @@ const BUTTON = "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm 
 const DISABLED = "cursor-not-allowed opacity-40 hover:bg-white";
 
 export function RequestsPagination({ pagination }: { pagination: PaginationDto }) {
-	const router = useRouter();
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
 
@@ -59,9 +59,10 @@ export function RequestsPagination({ pagination }: { pagination: PaginationDto }
 				if (value) params.set(key, value);
 				else params.delete(key);
 			}
-			router.replace(`${pathname}?${params.toString()}`);
+			// History API e não `router.replace` — ver o porquê em `lib/navigation`.
+			replaceSearchParams(pathname, params);
 		},
-		[router, pathname, searchParams]
+		[pathname, searchParams]
 	);
 
 	// Trocar o tamanho volta para a primeira página: manter `page=7` ao passar de

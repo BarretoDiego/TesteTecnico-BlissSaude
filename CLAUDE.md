@@ -215,4 +215,13 @@ Cobertura: **95%** em `middlewares/`, `services/`, `utils/`, `errors/`; **90%** 
 - **Pool em Lambda**: singleton em escopo de módulo (`packages/database/src/client.ts`) com `max: 1`. Nunca `pool.end()` por request. `callbackWaitsForEmptyEventLoop: false`.
 - **`enterWith` do AsyncLocalStorage** vaza o store entre invocações em container reutilizado — por isso `lambdaHandler` envolve tudo em `als.run(...)`.
 - **Next 16**: `params` e `searchParams` são `Promise` e precisam de `await`.
+- **Query string em rota estática**: `router.replace` para a **mesma** rota com query
+  diferente é descartado no build de produção — o roteador reescreve o endereço com a
+  URL anterior e nada acontece. No servidor de desenvolvimento funciona, então o defeito
+  só aparece depois do deploy. Filtro e paginação usam `replaceSearchParams`
+  (`web/src/lib/navigation.ts`), sobre a History API nativa, que é o caminho documentado
+  e sincroniza com `useSearchParams`.
+- **`data-query` vem do estado, não da URL**: o atributo diz qual consulta produziu o que
+  está na tela. Derivá-lo de `useSearchParams` abre um render em que o endereço já é o
+  novo e as linhas ainda são as antigas — e a automação lê dado velho achando que é o novo.
 - **`awslocal` não serve aqui** — ele assume a porta 4566. Use `scripts/localstack/aws.sh`.

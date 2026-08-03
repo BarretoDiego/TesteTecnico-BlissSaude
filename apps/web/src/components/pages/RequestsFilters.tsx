@@ -17,11 +17,11 @@ import {
 	REQUEST_STATUSES,
 	REQUEST_STATUS_LABELS,
 } from "@saude-bliss/contracts";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
+import { replaceSearchParams } from "~/lib/navigation";
 
 export function RequestsFilters() {
-	const router = useRouter();
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
 
@@ -33,9 +33,10 @@ export function RequestsFilters() {
 			// Filtrar reinicia a paginação: manter `page=3` ao trocar de filtro
 			// costuma cair numa página vazia.
 			params.delete("page");
-			router.replace(`${pathname}?${params.toString()}`);
+			// History API e não `router.replace` — ver o porquê em `lib/navigation`.
+			replaceSearchParams(pathname, params);
 		},
-		[router, pathname, searchParams]
+		[pathname, searchParams]
 	);
 
 	return (
@@ -89,7 +90,7 @@ export function RequestsFilters() {
 			</label>
 
 			<button
-				onClick={() => router.replace(pathname)}
+				onClick={() => replaceSearchParams(pathname, new URLSearchParams())}
 				className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
 				data-testid="filter-clear"
 			>

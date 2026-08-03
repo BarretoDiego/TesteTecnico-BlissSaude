@@ -26,6 +26,8 @@ function ConferenciaContent() {
 	const { user } = useSession();
 	const searchParams = useSearchParams();
 	const [result, setResult] = useState<ListRequestsResult | null>(null);
+	/** Consulta que produziu a fila que está na tela. Ver `data-query` abaixo. */
+	const [loadedQuery, setLoadedQuery] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [requestId, setRequestId] = useState<string>();
@@ -66,6 +68,7 @@ function ConferenciaContent() {
 						pageSize: Number(searchParams.get("pageSize")) || undefined,
 					})
 				);
+				setLoadedQuery(searchParams.toString());
 			} catch (caught) {
 				setError(caught instanceof ApiError ? caught.message : "Falha ao carregar a fila");
 				if (caught instanceof ApiError) setRequestId(caught.requestId);
@@ -113,14 +116,18 @@ function ConferenciaContent() {
 		}
 	}, [user, pendingAction, load]);
 
-	const query = searchParams.toString();
-
+	/*
+	 * `loadedQuery` e não a URL corrente: mudar a página pela History API redesenha
+	 * na hora, e existe um render em que o endereço já é o novo, `loading` ainda é
+	 * falso e as linhas ainda são as da página anterior. O atributo tem de anunciar
+	 * a consulta que **produziu** o que está na tela.
+	 */
 	return (
 		<div
 			className="space-y-6"
 			data-testid="conferencia"
 			data-loading={String(loading)}
-			data-query={loading ? "" : query}
+			data-query={loading ? "" : loadedQuery}
 		>
 			<div className="flex items-center justify-between">
 				<div>
