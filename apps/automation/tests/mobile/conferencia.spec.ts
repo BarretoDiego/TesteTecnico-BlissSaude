@@ -79,8 +79,7 @@ test.describe("conferência pelo celular", () => {
 		expect(await conferenciaPage.snapshotRows()).toHaveLength(2);
 		await esperarSemRolagemHorizontal(conferenciaPage.page);
 
-		await conferenciaPage.page.getByTestId("pagination-next").tap();
-		await conferenciaPage.page.locator('[data-testid="conferencia"][data-loading="false"]').waitFor();
+		await conferenciaPage.mudarConsulta(() => conferenciaPage.page.getByTestId("pagination-next").tap());
 
 		expect((await conferenciaPage.snapshotRows()).length).toBeGreaterThan(0);
 	});

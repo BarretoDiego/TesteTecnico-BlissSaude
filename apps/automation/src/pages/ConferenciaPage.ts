@@ -26,6 +26,35 @@ export class ConferenciaPage extends BasePage {
 		return this.byTestId("conferencia-queue");
 	}
 
+	/**
+	 * Executa a ação e espera a fila alcançar a **nova** consulta.
+	 *
+	 * As duas esperas cobrem armadilhas distintas, e nenhuma sozinha basta.
+	 * Esperar `data-loading="false"` não serve: o atributo já é `false` antes do
+	 * toque, então a espera passa na hora e a leitura sai com a página anterior —
+	 * foi assim que a paginação da fila leu zero linha no CI. E comparar
+	 * `data-query` com a URL precisa vir **depois** de o endereço mudar: no
+	 * instante do toque os dois ainda batem, pela consulta antiga.
+	 */
+	async mudarConsulta(acao: () => Promise<unknown>): Promise<void> {
+		const antes = this.page.url();
+		await acao();
+
+		await expect
+			.poll(() => this.page.url(), { message: "a paginação deveria ter escrito a nova consulta no endereço" })
+			.not.toBe(antes);
+
+		await expect
+			.poll(
+				async () => {
+					const esperado = new URL(this.page.url()).searchParams.toString();
+					return (await this.byTestId("conferencia").getAttribute("data-query")) === esperado;
+				},
+				{ message: "a fila deveria renderizar os dados da consulta que está na URL" }
+			)
+			.toBe(true);
+	}
+
 	get pendingCount(): Locator {
 		return this.byTestId("conferencia-pending-count");
 	}
