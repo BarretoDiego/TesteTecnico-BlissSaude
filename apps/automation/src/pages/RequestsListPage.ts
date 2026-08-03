@@ -213,11 +213,22 @@ export class RequestsListPage extends BasePage {
 	 * tela redesenhou, então os dois ainda batem — pela consulta antiga — e a
 	 * leitura sai com os dados da página anterior. Foi assim que a paginação
 	 * "passou" mostrando a mesma solicitação nas duas páginas.
+	 *
+	 * A espera pelo endereço é uma **sondagem**, e não `waitForURL`. Filtrar e
+	 * paginar mudam só a query string da mesma rota: o App Router resolve isso com
+	 * `history.replaceState` e um redesenho, sem evento de navegação e sem novo
+	 * `load`. `waitForURL` espera por navegação e fica pendurado até o teste
+	 * estourar — o que acontecia no CI, contra o build de produção, enquanto
+	 * passava no servidor de desenvolvimento.
 	 */
 	private async aoMudarConsulta(acao: () => Promise<unknown>): Promise<void> {
 		const antes = this.page.url();
 		await acao();
-		await this.page.waitForURL((url) => url.toString() !== antes);
+
+		await expect
+			.poll(() => this.page.url(), { message: "o controle deveria ter escrito a nova consulta no endereço" })
+			.not.toBe(antes);
+
 		await this.waitForCurrentQuery();
 	}
 

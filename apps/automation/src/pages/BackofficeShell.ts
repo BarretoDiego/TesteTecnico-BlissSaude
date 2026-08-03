@@ -8,7 +8,7 @@
  * cima do botão de perfil.
  */
 
-import type { Locator } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 /** As três telas do backoffice, na ordem do menu. */
@@ -37,7 +37,9 @@ export class BackofficeShell extends BasePage {
 	 */
 	async irPara(secao: Secao): Promise<void> {
 		await this.nav(secao).click();
-		await this.page.waitForURL(new RegExp(`/${secao}`));
+		// `toHaveURL` sonda o endereço; `waitForURL` espera um evento de navegação,
+		// que a navegação client-side do App Router nem sempre emite.
+		await expect(this.page).toHaveURL(new RegExp(`/${secao}`));
 	}
 
 	/** Item ativo segundo a tela, para comparar com a rota atual. */

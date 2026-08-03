@@ -37,9 +37,14 @@ export class LoginPage extends BasePage {
 		// A janela de 6s antes de reenviar não é chute: um envio que pegou já saiu
 		// da tela de login bem antes disso. Reenviar mais cedo cairia em cima de uma
 		// autenticação em andamento — trocando uma corrida por outra.
+		//
+		// A saída é detectada por sondagem do endereço, e não por `waitForURL`: a
+		// troca de tela é navegação client-side do App Router, que nem sempre emite
+		// o evento de navegação que `waitForURL` espera.
 		for (let tentativa = 0; tentativa < 3; tentativa += 1) {
-			const saiuDoLogin = await this.page
-				.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 6_000 })
+			const saiuDoLogin = await expect
+				.poll(() => new URL(this.page.url()).pathname, { timeout: 6_000 })
+				.not.toMatch(/^\/login/)
 				.then(() => true)
 				.catch(() => false);
 
