@@ -1,0 +1,43 @@
+# =============================================================================
+# Preâmbulo comum a todo job do pipeline.
+#
+# Existe porque a sequência pnpm → Node → install se repetia em cada job, e
+# repetição de preâmbulo é onde a divergência entra sem ninguém notar: um job
+# atualiza a versão do Node, os outros continuam no antigo e o erro aparece
+# como falha de compilação em um lugar só.
+# =============================================================================
+name: Preparar ambiente
+description: Instala pnpm, Node e as dependências do workspace com cache.
+
+inputs:
+  node-version:
+    description: Versão do Node. Casa com o `.nvmrc` e com o runtime declarado no Terraform.
+    required: false
+    default: "22"
+  instalar:
+    description: Instalar as dependências. `false` em jobs que só leem arquivos do repositório.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+
+  steps:
+    - uses: pnpm/action-setup@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        # O cache é do **store** do pnpm, não do node_modules: o store é
+        # compartilhado entre todos os pacotes do monorepo e sobrevive à
+        # mudança de um manifesto qualquer.
+        cache: pnpm
+
+    - if: inputs.instalar == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    # O diretório é o ponto de encontro dos fragmentos de relatório. Cada job
+    # escreve o seu aqui e o job de consolidação monta o documento final.
+    - shell: bash
+      run: mkdir -p "${RELATORIO_DIR:-$GITHUB_WORKSPACE/relatorio}"

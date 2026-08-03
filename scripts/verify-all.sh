@@ -372,7 +372,7 @@ verificar 404 "$(http "$API/requests/00000000-0000-4000-8000-999999999999" "${AU
 verificar 400 "$(http -G "$API/requests" "${AUTH[@]}" --data-urlencode 'status=arquivado')" "status fora do enum"
 verificar 400 "$(http -G "$API/requests" "${AUTH[@]}" --data-urlencode 'pageSize=100000')" "pageSize acima do teto"
 
-passo "filtros do desafio"
+passo "filtros de listagem"
 TOTAL_TODOS=$(json -G "$API/requests" "${AUTH[@]}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["pagination"]["total"])' 2>/dev/null)
 TOTAL_FILTRO=$(json -G "$API/requests" "${AUTH[@]}" --data-urlencode 'createdBy=verificador@saudebliss.test' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["pagination"]["total"])' 2>/dev/null)
 TOTAL_COMBINADO=$(json -G "$API/requests" "${AUTH[@]}" --data-urlencode 'createdBy=verificador@saudebliss.test' --data-urlencode 'status=open' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["pagination"]["total"])' 2>/dev/null)

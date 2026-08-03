@@ -6,10 +6,10 @@
 
 ## Contexto
 
-O desafio determina **Serverless Framework** como stack. A infraestrutura
-durável do projeto — banco, segredos, IAM — é descrita em **Terraform**. Adotar
-só um dos dois descumpriria o enunciado ou deixaria metade da infraestrutura
-sem descrição.
+A stack de deploy definida para o projeto é o **Serverless Framework**. A
+infraestrutura durável — banco, segredos, IAM — é descrita em **Terraform**.
+Adotar só um dos dois sairia da stack acordada ou deixaria metade da
+infraestrutura sem descrição.
 
 ### As duas ferramentas competem?
 
@@ -83,7 +83,7 @@ passam (usam o app diretamente) e só o deploy revela o 403.
 
 ## Limitações do LocalStack nesta trilha
 
-Encontradas ao construir, todas contornadas ou documentadas:
+Encontradas ao longo do desenvolvimento, todas contornadas ou documentadas:
 
 - **`AWS::Lambda::Version` falha.** O `PublishVersion` do LocalStack acusa
   divergência de `CodeSHA256` mesmo com o artefato idêntico. Resolvido com
@@ -102,7 +102,7 @@ Encontradas ao construir, todas contornadas ou documentadas:
 
 ## Consequências
 
-O enunciado é cumprido literalmente: `sls deploy` provisiona a API e devolve uma
+A trilha do Serverless é completa: `sls deploy` provisiona a API e devolve uma
 URL que responde. E o Terraform segue sendo a trilha principal — é a que
 `pnpm start` usa.
 

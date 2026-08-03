@@ -1,6 +1,5 @@
 /**
- * Rastreabilidade por requestId — o requisito de observabilidade do desafio,
- * verificado do browser até o banco.
+ * Rastreabilidade por requestId, verificada do browser até o banco.
  */
 
 import { expect, test } from "~/fixtures/test";

@@ -6,15 +6,17 @@
 
 ## Contexto
 
-O desafio determina **RDS** como persistência e pede a justificativa. O padrão da
-casa usa MongoDB com Mongoose.
+A persistência do projeto é **RDS**. Em arquitetura serverless a escolha não é
+óbvia: um banco de documentos gerenciado dispensa VPC e gerenciamento de conexão,
+que é justamente onde o relacional cobra caro. Este ADR registra por que o
+relacional ainda assim serve melhor a este domínio, e como o custo foi contido.
 
 ## Por que relacional serve a este domínio
 
 Argumentando pelo domínio, não por preferência:
 
-- **Schema estável e fechado.** O desafio enumera os campos da solicitação. Não há
-  variação por tipo de ticket que justificasse documento livre.
+- **Schema estável e fechado.** Os campos da solicitação são conhecidos e fixos.
+  Não há variação por tipo de ticket que justificasse documento livre.
 - **Consulta por atributo com ordenação.** `?createdBy=` e `?status=`, combináveis,
   com ordenação por data. Filtros ad-hoc combináveis são caros de modelar em chave
   composta e triviais em SQL — foi este o critério que decidiu.
@@ -53,5 +55,5 @@ Configuração adotada:
 - **nunca** `pool.end()` por requisição
 
 **RDS Proxy é a resposta de produção**: multiplexa conexões e remove o acoplamento
-entre concorrência de Lambda e limite do banco. Não foi implementado aqui porque o
-suporte do LocalStack é parcial e não agregaria à demonstração.
+entre concorrência de Lambda e limite do banco. Não foi adotado no ambiente local
+porque o suporte do LocalStack é parcial; em AWS real entra na frente do pool.

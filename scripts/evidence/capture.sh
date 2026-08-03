@@ -2,9 +2,9 @@
 # =============================================================================
 # Captura as evidências de execução em docs/evidence/.
 #
-# Evidência é entregável, não pós-produção: o desafio pede prova de deploy e de
-# execução da automação. Roteirizar a captura garante que ela reflita o estado
-# atual do código, e não uma sessão manual de meses atrás.
+# Evidência é entregável, não pós-produção: deploy e execução da automação
+# precisam de prova. Roteirizar a captura garante que ela reflita o estado atual
+# do código, e não uma sessão manual de meses atrás.
 # =============================================================================
 set -euo pipefail
 

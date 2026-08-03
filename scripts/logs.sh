@@ -2,9 +2,9 @@
 # =============================================================================
 # Logs das Lambdas no CloudWatch.
 #
-# Existe sobretudo para demonstrar a rastreabilidade: filtrar por um `requestId`
-# devolve a requisição inteira atravessando controller, service e repositório —
-# que é o que o desafio pede para ser demonstrável.
+# Existe sobretudo para a rastreabilidade: filtrar por um `requestId` devolve a
+# requisição inteira atravessando controller, service e repositório — que é o que
+# torna um incidente investigável.
 #
 # Uso:
 #   ./scripts/logs.sh                        # últimas linhas de todos os serviços

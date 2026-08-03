@@ -1,5 +1,5 @@
 /**
- * Rastreabilidade por requestId — requisito explícito do desafio.
+ * Rastreabilidade por requestId.
  *
  * Verifica que **um único id** atravessa a requisição inteira e aparece nos
  * quatro lugares que importam: header de resposta, envelope, linhas de log e a
@@ -300,7 +300,7 @@ describe("agrupamento por prefixo de domínio", () => {
 	it("expõe a raiz do domínio sem exigir barra final", async () => {
 		repository.list.mockResolvedValue({ items: [], total: 0 });
 
-		// O desafio especifica `GET /requests`; nenhum cliente HTTP acrescenta a
+		// O contrato publicado é `GET /requests`; nenhum cliente HTTP acrescenta a
 		// barra que o prefixo do Fastify criaria.
 		const [semBarra, comBarra] = await Promise.all([
 			app.inject({ method: "GET", url: "/v1/requests" }),

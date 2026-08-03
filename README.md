@@ -1,12 +1,12 @@
 # Saúde Bliss — Gestão de Solicitações
 
-[![testes](https://img.shields.io/badge/testes-431%20passando-brightgreen)](#-testes)
+[![testes](https://img.shields.io/badge/testes-745%20passando-brightgreen)](#-testes)
 [![e2e](https://img.shields.io/badge/playwright-21%20cenários-brightgreen)](#-automação-da-conferência)
 [![stack](https://img.shields.io/badge/stack-Node%2022%20·%20TypeScript%20·%20Fastify-blue)](#-stack)
 [![iac](https://img.shields.io/badge/iac-Terraform%20·%20Serverless%20Framework-844fba)](#-deploy)
 
-Etapa técnica: **API serverless de gestão de solicitações** e **automação da
-conferência operacional** com Playwright — mais um backoffice que fecha o ciclo.
+**API serverless de gestão de solicitações** e **automação da conferência
+operacional** com Playwright — mais um backoffice que fecha o ciclo.
 
 ---
 
@@ -30,7 +30,7 @@ conferência operacional** com Playwright — mais um backoffice que fecha o cic
 
 ## 🎯 O que foi entregue
 
-| Requisito do desafio                                 | Onde                                                                                                   |
+| Requisito                                            | Onde                                                                                                   |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Node.js + TypeScript + Serverless Framework          | `apps/api/serverless.yml` — `pnpm deploy:sls`                                                          |
 | Deploy em API Gateway + Lambda                       | duas trilhas — Terraform e Serverless ([ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md)) |
@@ -43,8 +43,9 @@ conferência operacional** com Playwright — mais um backoffice que fecha o cic
 | Automação Playwright com Page Objects                | `apps/automation/`                                                                                     |
 | Headless e com UI, retries, trace, relatório         | `playwright.config.ts`                                                                                 |
 
-**Além do pedido:** autenticação e autorização (`bliss-auth` + `bliss-authorizer`),
-trilha de auditoria, e um backoffice Next.js — que é o sistema que a automação opera.
+**Acrescentado ao escopo mínimo:** autenticação e autorização (`bliss-auth` +
+`bliss-authorizer`), trilha de auditoria, e um backoffice Next.js — que é o sistema
+que a automação opera.
 
 ---
 
@@ -154,22 +155,61 @@ Ao final:
 > **Sem licença do LocalStack.** A imagem está fixada na v3 e o Terraform já vem
 > com `create_rds_instance = false`. Nada aqui exige token.
 
+### A segunda trilha de deploy
+
+`pnpm start` provisiona com **Terraform**. A trilha do **Serverless Framework** é
+igualmente completa, sobe em outro stage e **coexiste** com a primeira — não é
+preciso derrubar nada para experimentá-la:
+
+```bash
+pnpm deploy:sls      # build → serverless deploy → migrations → seed → smoke
+pnpm urls            # imprime as duas URLs, lado a lado
+pnpm deploy:sls:remove   # derruba só o stack do Serverless
+```
+
+Ela pressupõe a infraestrutura local no ar (o `pnpm start`, ou `pnpm infra:up`
+sozinho). Diferenças, limitações do emulador e como escolher entre as duas estão
+em [Deploy](#-deploy).
+
 ### Comandos
 
-| Comando                  | O que faz                                                    |
-| ------------------------ | ------------------------------------------------------------ |
-| `pnpm start`             | sobe tudo, do zero ao sistema no ar                          |
-| `pnpm stop`              | derruba tudo (preserva os dados)                             |
-| `pnpm reset`             | derruba, apaga os volumes e sobe do zero                     |
-| `pnpm urls`              | endereços, credenciais e telas                               |
-| `pnpm resources`         | inventário do que existe na AWS local                        |
-| `pnpm logs`              | logs das Lambdas no CloudWatch                               |
-| `pnpm logs --trace <id>` | uma requisição inteira, atravessando os serviços             |
-| `pnpm verify`            | verificação ponta a ponta (ver [Verificação](#-verificação)) |
-| `pnpm smoke`             | 17 asserções contra a API implantada                         |
-| `pnpm test`              | testes de unidade, integração, contrato e e2e                |
-| `pnpm test:e2e`          | suíte Playwright (headless + headed)                         |
-| `pnpm evidence`          | regenera `docs/evidence/`                                    |
+**Ciclo de vida**
+
+| Comando         | O que faz                                   |
+| --------------- | ------------------------------------------- |
+| `pnpm start`    | do zero ao sistema no ar — trilha Terraform |
+| `pnpm stop`     | derruba tudo, preservando os dados          |
+| `pnpm reset`    | derruba, apaga os volumes e sobe do zero    |
+| `pnpm infra:up` | só LocalStack e Postgres, sem deploy        |
+| `pnpm urls`     | endereços, credenciais e telas              |
+
+**Deploy**
+
+| Comando                  | O que faz                                       |
+| ------------------------ | ----------------------------------------------- |
+| `pnpm deploy:local`      | build → Terraform → migrations → seed → smoke   |
+| `pnpm deploy:sls`        | build → Serverless → migrations → seed → smoke  |
+| `pnpm deploy:sls:remove` | derruba o stack do Serverless                   |
+| `pnpm check:routes`      | paridade de rotas entre router, Terraform e sls |
+
+**Verificar**
+
+| Comando          | O que faz                                                    |
+| ---------------- | ------------------------------------------------------------ |
+| `pnpm smoke`     | 17 asserções contra a API implantada                         |
+| `pnpm test`      | as oito suítes Jest — unidade, integração, contrato e e2e    |
+| `pnpm test:e2e`  | suíte Playwright contra o sistema no ar                      |
+| `pnpm typecheck` | tipos de todo o monorepo                                     |
+| `pnpm verify`    | verificação ponta a ponta (ver [Verificação](#-verificação)) |
+
+**Inspecionar**
+
+| Comando                  | O que faz                                        |
+| ------------------------ | ------------------------------------------------ |
+| `pnpm resources`         | inventário do que existe na AWS local            |
+| `pnpm logs`              | logs das Lambdas no CloudWatch                   |
+| `pnpm logs --trace <id>` | uma requisição inteira, atravessando os serviços |
+| `pnpm evidence`          | regenera `docs/evidence/`                        |
 
 ### Modo de desenvolvimento
 
@@ -194,7 +234,21 @@ pnpm --filter @saude-bliss/bliss-auth     dev   # só /v1/auth     → :4003
 
 ## ✅ Verificação
 
-Como confirmar que tudo funciona, do mais rápido ao mais completo.
+Como confirmar que tudo funciona, do mais rápido ao mais completo. O mapa antes
+do detalhe:
+
+| Comando          | O que cobre                                    | Precisa de                       |
+| ---------------- | ---------------------------------------------- | -------------------------------- |
+| `pnpm typecheck` | tipos de todo o monorepo                       | nada                             |
+| `pnpm test`      | unidade, integração, contrato e e2e das suítes | Postgres para a camada e2e¹      |
+| `pnpm smoke`     | a API **implantada**, ponta a ponta            | um deploy no ar                  |
+| `pnpm test:e2e`  | o sistema pelo browser, com Playwright         | sistema no ar + browsers²        |
+| `pnpm verify`    | subida do zero, isolamento, auth real e deploy | Docker (derruba e sobe o volume) |
+
+¹ `pnpm infra:up && pnpm db:migrate`. Sem banco a camada `e2e` falha — `SKIP_E2E=1` pula.
+² `pnpm --filter @saude-bliss/automation install:browsers`, uma vez por máquina.
+
+Quem quer só uma resposta de "está tudo de pé?": `pnpm start && pnpm verify:rapido`.
 
 ### 1. Pelo navegador
 
@@ -235,17 +289,21 @@ criação** no detalhe da solicitação.
 pnpm smoke
 ```
 
-17 asserções contra a API implantada: os três endpoints do desafio com 201/200/404,
+17 asserções contra a API implantada: os três endpoints de solicitações com 201/200/404,
 payload inválido em 400, id malformado em 400, filtros, conferência, 409 na segunda
 conferência, trilha de auditoria, e o `requestId` persistido.
 
 ### 4. Suítes automatizadas
 
 ```bash
-pnpm test        # 431 testes — unidade, integração, contrato e e2e
-pnpm test:e2e    # 42 execuções Playwright (21 cenários × headless e headed)
+pnpm test        # 745 testes — unidade, integração, contrato e e2e
+pnpm test:e2e    # 21 cenários Playwright × headless e headed = 42 execuções
 pnpm typecheck   # sem erros de tipo em todo o monorepo
 ```
+
+`pnpm test` cobre as oito suítes do monorepo — quatro microserviços, três pacotes
+compartilhados e o backoffice. Detalhe das camadas em [Testes](#-testes); a suíte
+Playwright, em [Automação da conferência](#-automação-da-conferência).
 
 ### 5. Verificação operacional completa
 
@@ -434,16 +492,25 @@ mesmo `dist/function.zip`. Ver [ADR 0002](docs/adr/0002-serverless-framework-vs-
 | Declaração | `infra/terraform/`  | `apps/api/serverless.yml` |
 | Topologia  | uma API, 4 Lambdas  | idêntica                  |
 
+**Pré-requisito das duas:** LocalStack e Postgres no ar — `pnpm infra:up`, ou o
+`pnpm start`, que já faz isso. Nenhuma das duas exige a outra.
+
 Subir as duas e ver as duas URLs respondendo:
 
 ```bash
+pnpm infra:up       # LocalStack + Postgres
 pnpm deploy:local   # Terraform  → stage local
 pnpm deploy:sls     # Serverless → stage sls
-pnpm urls           # imprime as duas
+pnpm urls           # imprime as duas, lado a lado
 ```
 
-O mesmo smoke — 17 asserções — roda contra qualquer uma delas; o alvo é resolvido
-por variável de ambiente.
+Cada trilha roda o smoke — 17 asserções — no fim do próprio deploy, contra a URL
+que ela acabou de criar. Para repetir o smoke depois, sem redeploy:
+
+```bash
+pnpm smoke                          # alvo: a URL do Terraform (padrão)
+API_BASE_URL=<url-do-sls> pnpm smoke   # alvo: a do Serverless
+```
 
 > **Não aponte as duas para o mesmo stage.** Cada uma mantém o próprio estado, e
 > dois donos do mesmo recurso produzem drift e remoção acidental. Stages
@@ -458,18 +525,27 @@ pnpm deploy:local
 Executa, em ordem: aguarda a infraestrutura → empacota com esbuild → **verifica
 paridade de rotas** → `terraform apply` → migrations e seed → smoke test.
 
+É a trilha que `pnpm start` usa, e a única que descreve a infraestrutura durável
+(banco, segredos, IAM) — por isso é o caminho padrão do dia a dia.
+
 O build vem antes do Terraform porque ele lê o zip por `filebase64sha256` — invertê-los
 publica o artefato da execução anterior.
 
 ### Serverless Framework
 
 ```bash
-pnpm deploy:sls              # deploy + migrations + smoke
-pnpm deploy:sls:remove       # derruba o stack
+pnpm deploy:sls              # build → deploy → migrations → seed → smoke
+pnpm deploy:sls:remove       # derruba só o stack do Serverless
 ```
 
 Provisiona as quatro Lambdas atrás de **uma** API Gateway, mais os segredos que
-ela usa — sem depender de `terraform apply` antes.
+ela usa — sem depender de `terraform apply` antes. Ao final imprime a URL do
+stage `sls`, que responde exatamente como a do Terraform.
+
+Para apontar o backoffice para essa URL em vez da do Terraform, troque
+`API_BASE_URL` e `NEXT_PUBLIC_API_BASE_URL` em `apps/web/.env.local` — o Next
+recarrega sozinho. O arquivo é gerado por `scripts/localstack/export-outputs.sh`
+e volta a apontar para o Terraform no próximo `pnpm start`.
 
 Três detalhes que o LocalStack impõe e que o script já trata: `versionFunctions:
 false` (o `PublishVersion` do emulador acusa divergência de `CodeSHA256` mesmo
@@ -525,15 +601,28 @@ pnpm --filter @saude-bliss/api check:routes
 
 ## 🧪 Testes
 
-**431 testes** em quatro camadas — 214 nos microserviços e 217 no runtime
-compartilhado —, com nomes em PT-BR descrevendo comportamento.
+**745 testes** — 214 nos quatro microserviços, 445 nos três pacotes compartilhados
+e 86 no backoffice, com nomes em PT-BR descrevendo comportamento.
 
 ```bash
-pnpm test                                        # todos os microserviços
-pnpm test:coverage                               # com relatório de cobertura
-pnpm --filter @saude-bliss/core test             # runtime compartilhado
-pnpm --filter @saude-bliss/bliss-requests test:e2e   # contra Postgres real
+pnpm test              # as oito suítes do monorepo
+pnpm test:api          # só os microserviços
+pnpm test:packages     # só os pacotes compartilhados
+pnpm test:web          # só o backoffice
+pnpm test:coverage     # tudo, com relatório de cobertura
 ```
+
+Ou uma suíte de cada vez:
+
+```bash
+pnpm --filter @saude-bliss/bliss-requests test        # um microserviço
+pnpm --filter @saude-bliss/bliss-requests test:unit   # uma camada dele
+pnpm --filter @saude-bliss/core test                  # o runtime compartilhado
+```
+
+**A camada `e2e` precisa do Postgres do compose** (`pnpm infra:up`) com as
+migrations aplicadas (`pnpm db:migrate`). Sem ele, `SKIP_E2E=1` pula a camada e o
+resto roda normalmente.
 
 | Camada        | O que exercita                                       |
 | ------------- | ---------------------------------------------------- |
@@ -550,11 +639,19 @@ Duas suítes valem além da cobertura:
   solicitação e afirma que exatamente uma vence e exatamente um evento é gravado.
   É o compare-and-set no `where` do `UPDATE`; repositório mockado só pode supor.
 
-**Cobertura:** 100% de statements, linhas e funções em `bliss-authorizer` e
-`bliss-reviews`; 99%+ nos demais e no runtime compartilhado. Branches fica um pouco
-abaixo onde os ramos restantes são fallbacks defensivos sem caminho de negócio que
-os atinja — o `where` opcional do Drizzle, o coerce do Zod. Forçar 95% ali
-produziria teste escrito para a métrica, não para o comportamento.
+**Cobertura** (`pnpm test:coverage`, statements):
+
+| Suíte                                                        | Statements | Branches |
+| ------------------------------------------------------------ | ---------- | -------- |
+| `contracts`, `database`, `bliss-authorizer`, `bliss-reviews` | 100%       | 100%     |
+| `core`                                                       | 100%       | 97%      |
+| `bliss-auth`                                                 | 99%        | 97%      |
+| `bliss-requests`                                             | 99%        | 75%      |
+| `web`                                                        | 99%        | 77%      |
+
+Branches fica abaixo onde os ramos restantes são fallbacks defensivos sem caminho
+de negócio que os atinja — o `where` opcional do Drizzle, o coerce do Zod. Forçar
+95% ali produziria teste escrito para a métrica, não para o comportamento.
 
 Os limites são verificados no CI, e vale registrar o que eles pegaram: ao escrever
 os testes que faltavam para o `PasswordService` apareceu um defeito real — a
@@ -569,19 +666,28 @@ passaria a verificar. Corrigido para derivar sempre em `KEY_LENGTH`.
 Automatiza o fluxo operacional diário: abrir a fila, conferir cada solicitação
 contra o registro, marcar como revisada.
 
+**Pré-requisitos:** o sistema no ar (`pnpm start`) e os browsers instalados, uma
+vez por máquina. O `pnpm start` já grava `apps/automation/.env` com a URL da API e
+a do backoffice.
+
+```bash
+pnpm --filter @saude-bliss/automation install:browsers   # uma vez
+pnpm test:e2e                                            # os 21 cenários, headless e headed
+```
+
+Ou de dentro do pacote, com mais controle:
+
 ```bash
 cd apps/automation
-cp .env.example .env
-pnpm install:browsers
-
-pnpm test          # headless
-pnpm test:headed   # com UI, em câmera lenta
+pnpm test          # os dois projects — headless e headed
+pnpm test:headed   # só o headed, com UI e em câmera lenta
 pnpm test:ui       # modo interativo
 pnpm report        # abre o relatório HTML
 ```
 
 **21 cenários** — smoke, filtros, paginação, conferência diária (incluindo o cancelamento
-da confirmação), rastreabilidade e divergências.
+da confirmação), rastreabilidade e divergências. Rodam contra qualquer uma das duas
+trilhas de deploy: o alvo é o `API_BASE_URL` do `.env`.
 
 ### O que faz disso uma conferência
 
@@ -618,7 +724,8 @@ Falhas geram trace, screenshot e vídeo (`test-results/`).
 
 Argumentando pelo domínio, não por preferência:
 
-- **Schema estável e fechado** — o desafio enumera os campos.
+- **Schema estável e fechado** — os campos da solicitação são conhecidos e não
+  variam por tipo de ticket.
 - **Filtros ad-hoc combináveis** (`?createdBy=&status=`) são caros de modelar em
   chave composta e triviais em SQL. Foi este o critério que decidiu.
 - **Escrita transacional em duas tabelas** — mudança de status e evento de auditoria
@@ -639,14 +746,14 @@ de uma `db.t4g.micro`. Detalhes em [ADR 0004](docs/adr/0004-rds-e-pool-de-conexo
 
 ## ⚖️ Decisões e limitações
 
-| Decisão                              | Motivo                                                                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Serverless Framework **e** Terraform | o desafio exige o primeiro; o segundo descreve a infraestrutura durável. Ambos implantam, em stages separados — ADR 0002 |
-| `serverless@3`                       | a v4 exige conta e travaria o deploy offline                                                                             |
-| LocalStack v3 fixado                 | as imagens de 2026 exigem token mesmo para serviços gratuitos                                                            |
-| `PATCH /reviews/{id}` além do escopo | a automação precisa de ação de escrita para ser fluxo, não roteiro de cliques                                            |
-| `strict: true` no TypeScript         | projeto novo, sem dívida de tipagem a acomodar                                                                           |
-| Zod 3 em vez de 4                    | `zod-to-json-schema` é Zod-3-only, e um schema alimenta validação e Swagger                                              |
+| Decisão                                     | Motivo                                                                                                                                               |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Serverless Framework **e** Terraform        | o primeiro é a stack de deploy definida para o projeto; o segundo descreve a infraestrutura durável. Ambos implantam, em stages separados — ADR 0002 |
+| `serverless@3`                              | a v4 exige conta e travaria o deploy offline                                                                                                         |
+| LocalStack v3 fixado                        | as imagens de 2026 exigem token mesmo para serviços gratuitos                                                                                        |
+| `PATCH /reviews/{id}` fora do escopo mínimo | a automação precisa de ação de escrita para ser fluxo, não roteiro de cliques                                                                        |
+| `strict: true` no TypeScript                | projeto novo, sem dívida de tipagem a acomodar                                                                                                       |
+| Zod 3 em vez de 4                           | `zod-to-json-schema` é Zod-3-only, e um schema alimenta validação e Swagger                                                                          |
 
 ### Limitações conhecidas
 
@@ -656,7 +763,7 @@ correta — `aws apigateway get-method` devolve `authorizationType: CUSTOM` com 
 detecta se a borda aplica autorização e, quando não aplica, valida o authorizer por
 invocação direta com o mesmo contrato de evento `REQUEST`.
 
-**O deploy demonstrado é local.** O mesmo HCL sobe em AWS real com
+**O deploy exercitado aqui é local.** O mesmo HCL sobe em AWS real com
 `use_localstack = false`; não foi executado por não haver conta provisionada.
 
 ---

@@ -6,7 +6,8 @@
 
 ## Contexto
 
-O desafio pede "rastreabilidade por requestId". O modo de falha que isso previne é
+A operação precisa correlacionar uma requisição de ponta a ponta por um único
+`requestId`. O modo de falha que isso previne é
 sutil: cada camada gerar o próprio id, de forma que os logs parecem corretos até
 alguém tentar correlacionar um incidente e descobrir que não dá.
 
@@ -46,7 +47,7 @@ A entidade se chama _request_ e o id de correlação também. Nomear a coluna
 `requests.request_id` seria ambíguo e colidiria com a FK em `request_events`.
 
 **Decisão:** `trace_id` na persistência, `requestId` no HTTP — que é o contrato da
-casa e o que o desafio pede.
+casa e o nome que o cliente já usa no header.
 
 ## Verificação
 

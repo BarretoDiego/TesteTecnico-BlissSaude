@@ -128,6 +128,71 @@ describe("DefaultErroHandler — erro de validação", () => {
 	});
 });
 
+describe("DefaultErroHandler — falha declarada pelo Fastify", () => {
+	/** Forma do erro que o Fastify lança para corpo malformado. */
+	const erroDoFastify = (statusCode: number, code: string) => ({ statusCode, code, message: "corpo inválido" });
+
+	it("traduz JSON malformado em 400, e não 500", () => {
+		const reply = makeReply();
+
+		// O Fastify já classifica: `statusCode: 400`. Sem reconhecer isso, um
+		// corpo quebrado do cliente virava defeito do servidor no alarme.
+		DefaultErroHandler(erroDoFastify(400, "FST_ERR_CTP_INVALID_JSON"), reply.reply, makeFastifyRequest());
+
+		expect(reply.statusCode).toBe(400);
+		expect(reply.payload.error.code).toBe("VALIDATION_ERROR");
+	});
+
+	it("informa o código do framework nos detalhes", () => {
+		const reply = makeReply();
+
+		DefaultErroHandler(erroDoFastify(400, "FST_ERR_CTP_INVALID_JSON"), reply.reply, makeFastifyRequest());
+
+		// Sem isso a resposta diz "payload inválido" sem dizer o que estava errado.
+		expect(reply.payload.error.details).toEqual({ reason: "FST_ERR_CTP_INVALID_JSON" });
+	});
+
+	it.each([
+		["content-type não suportado", 415, "FST_ERR_CTP_INVALID_MEDIA_TYPE"],
+		["payload grande demais", 413, "FST_ERR_CTP_BODY_TOO_LARGE"],
+	])("também reconhece %s", (_caso, statusCode, code) => {
+		const reply = makeReply();
+
+		DefaultErroHandler(erroDoFastify(statusCode, code), reply.reply, makeFastifyRequest());
+
+		expect(reply.statusCode).toBe(400);
+	});
+
+	it("não captura erro com statusCode de servidor", () => {
+		const reply = makeReply();
+
+		// 5xx é defeito nosso e precisa continuar caindo no catch-all, que loga
+		// tudo e não vaza nada.
+		DefaultErroHandler({ statusCode: 503, code: "FST_ERR_ALGO" }, reply.reply, makeFastifyRequest());
+
+		expect(reply.statusCode).toBe(500);
+	});
+
+	it("usa a mensagem quando não há código", () => {
+		const reply = makeReply();
+
+		DefaultErroHandler({ statusCode: 400, message: "corpo ausente" }, reply.reply, makeFastifyRequest());
+
+		expect(reply.payload.error.details).toEqual({ reason: "corpo ausente" });
+	});
+
+	it("não confunde BlissError, que usa httpStatus", () => {
+		const reply = makeReply();
+
+		// `BlissError` carrega `httpStatus`, não `statusCode`. Confundir os dois
+		// faria todo erro de domínio 4xx perder o próprio código.
+		DefaultErroHandler(BlissError.from("REQUEST_NOT_FOUND"), reply.reply, makeFastifyRequest());
+
+		expect(reply.payload.error.code).toBe("REQUEST_NOT_FOUND");
+		expect(reply.statusCode).toBe(404);
+	});
+});
+
 describe("DefaultErroHandler — erro de domínio", () => {
 	const codes = Object.keys(ERROR_CATALOG) as ErrorCode[];
 

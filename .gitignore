@@ -40,6 +40,16 @@ terraform.rc
 # como chave no S3, e os quatro `function.zip` colidiriam. Geradas no deploy.
 .artifacts/
 
+# pipeline — tudo gerado durante a execução dos workflows
+relatorio/
+relatorio-final.md
+relatorio-deploy.md
+jest-resultados.json
+# Backend remoto é copiado para infra/terraform/ só dentro do job de deploy;
+# a fonte versionada dele é .github/terraform/backend-s3.tf.
+infra/terraform/backend-s3.tf
+infra/terraform/plano.tfplan
+
 # os / editor
 .DS_Store
 Thumbs.db

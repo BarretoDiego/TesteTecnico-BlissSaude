@@ -57,6 +57,29 @@ function formatZodIssues(error: ZodError): Array<{ field: string; message: strin
 }
 
 /**
+ * Erro que o próprio Fastify já classificou como falha do cliente.
+ *
+ * `statusCode` entre 400 e 499 é a forma como ele sinaliza corpo malformado,
+ * content-type não suportado e payload acima do limite. Confiar nessa marcação
+ * evita enumerar códigos internos do framework, que mudam entre versões.
+ */
+function isClientFault(error: unknown): error is { statusCode: number; message?: string; code?: string } {
+	if (typeof error !== "object" || error === null) return false;
+	const status = (error as { statusCode?: unknown }).statusCode;
+	return typeof status === "number" && status >= 400 && status < 500;
+}
+
+/** Descrição curta e segura de um erro, para log e detalhe da resposta. */
+function describeError(error: unknown): string {
+	if (typeof error === "object" && error !== null) {
+		const { code, message } = error as { code?: unknown; message?: unknown };
+		if (typeof code === "string") return code;
+		if (typeof message === "string") return message;
+	}
+	return "requisição inválida";
+}
+
+/**
  * Códigos do Postgres que indicam indisponibilidade, não erro de aplicação.
  * Viram 503 (retentável) em vez de 500 (defeito), o que muda como o cliente e
  * o alarme reagem.
@@ -113,7 +136,24 @@ export function DefaultErroHandler(
 		});
 	}
 
-	// 3. Erro de domínio — status e mensagem já vieram do catálogo.
+	// 3. Erro do próprio Fastify que já se declara como falha do cliente.
+	//
+	// O caso concreto é corpo com JSON malformado: o Fastify lança
+	// `FST_ERR_CTP_INVALID_JSON` com `statusCode: 400`. Sem reconhecê-lo aqui a
+	// requisição caía no catch-all e virava **500** — erro de quem chamou
+	// contabilizado como defeito do servidor, sujando o alarme e escondendo a
+	// causa real de quem estava depurando o cliente.
+	if (isClientFault(error)) {
+		const definition = ERROR_CATALOG.VALIDATION_ERROR;
+		logger.log("warn", module, action, "requisição malformada", { reason: describeError(error) });
+		return blissFail(res, req, definition.httpStatus, {
+			code: "VALIDATION_ERROR",
+			message: definition.message,
+			details: { reason: describeError(error) },
+		});
+	}
+
+	// 4. Erro de domínio — status e mensagem já vieram do catálogo.
 	if (BlissError.isBlissError(error)) {
 		// 4xx é regra de negócio, não defeito: `warn` para não sujar o alarme de erro.
 		const level = error.httpStatus >= 500 ? "error" : "warn";

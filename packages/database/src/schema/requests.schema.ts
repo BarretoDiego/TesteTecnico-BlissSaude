@@ -19,7 +19,7 @@ export const requests = pgTable(
 		id: uuid("id").primaryKey().defaultRandom(),
 		title: varchar("title", { length: 140 }).notNull(),
 		description: text("description").notNull(),
-		/** Sem default: o desafio determina que o cliente informe a prioridade. */
+		/** Sem default: a prioridade é decisão de quem abre a solicitação. */
 		priority: requestPriorityEnum("priority").notNull(),
 		/** Sempre `open` na criação — campo do servidor, nunca aceito no payload. */
 		status: requestStatusEnum("status").notNull().default("open"),

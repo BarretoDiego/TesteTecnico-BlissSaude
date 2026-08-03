@@ -99,8 +99,16 @@ function applyInterceptors(config: InterceptorConfig): AxiosInstance {
 			return response;
 		},
 		(error: AxiosError) => {
-			const envelope = error.response?.data as Envelope<unknown> | undefined;
+			const corpo = error.response?.data as unknown;
 			const status = error.response?.status ?? 0;
+
+			// `typeof` antes do `in`: o operador **lança** quando o operando não é
+			// objeto, e um 502 de gateway responde HTML, não JSON. Sem esta guarda o
+			// interceptor estourava com `TypeError: Cannot use 'in' operator`, e o
+			// chamador recebia esse erro no lugar do `ApiError` — perdendo o status,
+			// o código e qualquer chance de `caught instanceof ApiError` funcionar.
+			const envelope =
+				typeof corpo === "object" && corpo !== null && "error" in corpo ? (corpo as Envelope<unknown>) : undefined;
 
 			if (envelope && "error" in envelope) {
 				if (status === 401 && config.clearAuthOnUnauthorized !== false) {

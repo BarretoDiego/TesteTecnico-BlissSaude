@@ -6,8 +6,8 @@
 
 ## Contexto
 
-O desafio descreve uma API de gestão de solicitações com três endpoints. Um único
-serviço monolítico atenderia o escopo literal.
+O escopo inicial é uma API de gestão de solicitações com três endpoints. Um único
+serviço monolítico daria conta dele.
 
 ## Decisão
 
@@ -40,4 +40,5 @@ A separação não é por gosto arquitetural — cada par tem perfil operacional
 - O banco é compartilhado (uma tabela, uma definição), mas as **queries** não: cada
   serviço tem seu repositório com apenas as operações do seu domínio.
 - O custo é a fronteira: comunicação entre domínios passaria por EventBridge, não
-  por chamada direta. Não foi exercitado porque o escopo não exigiu.
+  por chamada direta. Nenhum fluxo atual precisa disso, então o caminho está
+  preparado no core mas não exercitado.

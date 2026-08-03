@@ -4,7 +4,7 @@
  * Esta é a única camada que exercita o SQL de verdade. Vale por duas coisas que
  * teste com mock não consegue provar: que a **transação** de criação grava
  * solicitação e evento juntas, e que os filtros combinados produzem o conjunto
- * certo — que é o requisito do desafio.
+ * certo.
  *
  * Requer o Postgres do compose no ar (`pnpm infra:up`) com as migrations
  * aplicadas. Pule com `SKIP_E2E=1`.
@@ -106,7 +106,7 @@ describeE2E("RequestsRepository.findById", () => {
 	});
 });
 
-describeE2E("RequestsRepository.list — filtros do desafio", () => {
+describeE2E("RequestsRepository.list — filtros combinados", () => {
 	beforeAll(async () => {
 		await cleanup();
 		await insert({ createdBy: actor("ana"), priority: "high" });

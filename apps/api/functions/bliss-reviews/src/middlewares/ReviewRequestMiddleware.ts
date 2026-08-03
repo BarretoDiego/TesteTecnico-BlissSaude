@@ -3,7 +3,7 @@
  *
  * `PATCH /requests/{id}/review` — validação da conferência.
  *
- * Endpoint além do escopo mínimo do desafio. Existe porque a automação de
+ * Endpoint fora do escopo mínimo da API. Existe porque a automação de
  * conferência precisa de uma ação de escrita para ser um fluxo operacional de
  * verdade, e não um roteiro de cliques. Justificado no README.
  */

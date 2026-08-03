@@ -1,14 +1,54 @@
+# =============================================================================
+# CI — verificação do monorepo inteiro.
+#
+# ## Forma
+#
+# Um job por **preocupação**, todos disparando ao mesmo tempo. A única
+# dependência real é o `plano`, que descobre no disco quais pacotes têm suíte e
+# quais serviços têm build — as matrizes saem dali, então um microserviço novo
+# entra no pipeline sem ninguém editar este arquivo.
+#
+# ## Relatório
+#
+# Cada job escreve um fragmento de markdown em `$RELATORIO_DIR` e o publica como
+# artefato. O job `relatorio` junta todos num documento só: tabela de situação no
+# topo, detalhe de cada etapa embaixo, comentário único no PR. A aba de execução
+# do GitHub responde "qual passo quebrou"; o relatório responde "o que este
+# commit fez com o sistema".
+#
+# ## Também é chamável
+#
+# `workflow_call` deixa o `deploy.yml` reutilizar esta verificação inteira em vez
+# de manter uma cópia degradada dela — que é como um pipeline de deploy passa a
+# publicar o que o CI teria barrado.
+# =============================================================================
 name: CI
-
-# Um workflow para o monorepo inteiro. Um por microserviço, com filtro de
-# `paths`, faria sentido num repositório com dezenas de serviços. Aqui são
-# quatro e a suíte inteira roda em menos de um minuto — separar produziria
-# quatro arquivos quase idênticos para economizar segundos.
 
 on:
   push:
     branches: [main, dev, stage]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      ensaio-de-deploy:
+        description: Subir LocalStack e fazer um deploy completo com smoke test.
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      ensaio-de-deploy:
+        description: Subir LocalStack e fazer um deploy completo com smoke test.
+        type: boolean
+        default: false
+    outputs:
+      situacao:
+        description: ok | alerta | falha — situação consolidada das etapas.
+        value: ${{ jobs.relatorio.outputs.situacao }}
+
+# Menor privilégio por padrão. O único job que escreve é o `relatorio`, e ele
+# pede a permissão de comentário para si.
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,37 +57,162 @@ concurrency:
 env:
   # Casa com o `.nvmrc` e com o runtime declarado no Terraform.
   NODE_VERSION: "22"
+  RELATORIO_DIR: ${{ github.workspace }}/relatorio
+  # Absoluto de propósito: vários jobs rodam com `working-directory` dentro de um
+  # pacote, e caminho relativo espalharia fragmento por todo canto.
+  POSTGRES_URL: postgresql://saudebliss:saudebliss@localhost:5433/saudebliss
 
 jobs:
-  qualidade:
-    name: Tipos, formato e paridade de rotas
+  # ---------------------------------------------------------------------------
+  # Descoberta. Não instala nada — só lê o disco, e por isso termina em segundos
+  # e não atrasa quem depende dele.
+  # ---------------------------------------------------------------------------
+  plano:
+    name: Plano de execução
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      testes: ${{ steps.matriz.outputs.testes }}
+      servicos: ${{ steps.matriz.outputs.servicos }}
 
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+
+      - id: matriz
+        run: node .github/scripts/matriz.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          name: relatorio-plano
+          path: relatorio/
+          retention-days: 7
 
-      - run: pnpm install --frozen-lockfile
+  # ---------------------------------------------------------------------------
+  # Estático. Três jobs independentes em vez de três passos em série: prettier
+  # falhando não pode esconder um erro de tipo que já existia.
+  # ---------------------------------------------------------------------------
+  formato:
+    name: Formatação
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
-      - name: Verificação de tipos
-        run: pnpm -r typecheck
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
 
-      - name: Formatação
-        run: pnpm format:check
+      - id: prettier
+        continue-on-error: true
+        run: pnpm format:check 2>&1 | tee "$RUNNER_TEMP/formato.log"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id formato --ordem 10 --titulo "Formatação" \
+            --resultado "${{ steps.prettier.outcome }}" \
+            --log "$RUNNER_TEMP/formato.log" \
+            --resumo-ok "Todo o repositório está no formato do Prettier." \
+            --resumo-falha "Arquivos fora do formato. Rode \`pnpm format\` e recomite."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-formato
+          path: relatorio/
+          retention-days: 7
+
+      - if: steps.prettier.outcome == 'failure'
+        run: exit 1
+
+  tipos:
+    name: Verificação de tipos
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      # `--parallel` e não `-r` em série: são nove pacotes e cada `tsc` é um
+      # processo independente. Em série o job leva o triplo do tempo sem nenhum
+      # ganho de clareza.
+      - id: tsc
+        continue-on-error: true
+        run: pnpm -r --parallel typecheck 2>&1 | tee "$RUNNER_TEMP/tipos.log"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id tipos --ordem 11 --titulo "Verificação de tipos" \
+            --resultado "${{ steps.tsc.outcome }}" \
+            --log "$RUNNER_TEMP/tipos.log" \
+            --resumo-ok "\`tsc --noEmit\` limpo em todos os pacotes do workspace." \
+            --resumo-falha "Erro de tipagem. O projeto está em \`strict: true\` — o log aponta o arquivo."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-tipos
+          path: relatorio/
+          retention-days: 7
+
+      - if: steps.tsc.outcome == 'failure'
+        run: exit 1
+
+  rotas:
+    name: Paridade de rotas
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
 
       # A rota é declarada no router, no Terraform e no serverless.yml. Sem esta
       # verificação, acrescentar uma rota passa nos testes (que usam o app
       # diretamente) e só o deploy revela o 403 do API Gateway.
-      - name: Paridade de rotas
-        run: pnpm --filter @saude-bliss/api check:routes
+      - id: paridade
+        continue-on-error: true
+        run: pnpm --filter @saude-bliss/api check:routes 2>&1 | tee "$RUNNER_TEMP/rotas.log"
 
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id rotas --ordem 12 --titulo "Paridade de rotas" \
+            --resultado "${{ steps.paridade.outcome }}" \
+            --log "$RUNNER_TEMP/rotas.log" \
+            --resumo-ok "Router, Terraform e serverless.yml declaram o mesmo conjunto de rotas." \
+            --resumo-falha "Divergência entre as três declarações — o deploy responderia 403 na rota faltante." \
+            --detalhe "Cada rota vive em três lugares por exigência do API Gateway (um recurso por caminho, para autorizar por método). A duplicação é assumida; este verificador é a cerca em volta dela."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-rotas
+          path: relatorio/
+          retention-days: 7
+
+      - if: steps.paridade.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Testes — um job por pacote, todos ao mesmo tempo.
+  #
+  # `fail-fast: false` porque o valor de rodar seis suítes é saber quais seis
+  # passaram. Cancelar as outras na primeira falha devolve meia informação e
+  # obriga a um segundo push só para ver o resto.
+  # ---------------------------------------------------------------------------
   testes:
-    name: Testes
+    name: Testes · ${{ matrix.pacote.nome }}
     runs-on: ubuntu-latest
+    needs: plano
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pacote: ${{ fromJSON(needs.plano.outputs.testes) }}
 
     services:
       postgres:
@@ -65,37 +230,130 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://saudebliss:saudebliss@localhost:5433/saudebliss
+      # A suíte do authorizer assina e valida token; sem chave ela falharia por
+      # configuração, não por comportamento.
+      JWT_SECRET: chave-de-teste-com-mais-de-32-caracteres-para-hs256
 
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+      - uses: ./.github/actions/setup
 
-      - run: pnpm install --frozen-lockfile
-
-      # A camada e2e exercita SQL real — as migrations precisam estar aplicadas
-      # antes, senão ela falha por tabela inexistente e o erro não indica isso.
-      - name: Migrations
+      # Só quem tem camada e2e paga o custo: as demais suítes não tocam I/O e
+      # aplicar migrations nelas seria meio minuto jogado fora por pacote.
+      - if: matrix.pacote.banco
         run: pnpm --filter @saude-bliss/database db:migrate
 
-      - name: Suíte com cobertura
-        run: pnpm -r --filter './apps/api/functions/*' --filter @saude-bliss/core test:coverage
+      - id: jest
+        continue-on-error: true
+        working-directory: ${{ matrix.pacote.caminho }}
+        run: |
+          npx jest --ci --coverage \
+            --json --outputFile=jest-resultados.json \
+            --coverageReporters=json-summary --coverageReporters=text-summary --coverageReporters=lcov \
+            2>&1 | tee "$RUNNER_TEMP/jest.log"
 
-  build:
-    name: Empacotamento
+      - if: always()
+        run: |
+          node .github/scripts/resumo-testes.mjs \
+            --pacote "${{ matrix.pacote.nome }}" \
+            --dir "${{ matrix.pacote.caminho }}" \
+            --resultado "${{ steps.jest.outcome }}" \
+            --log "$RUNNER_TEMP/jest.log" \
+            --ordem 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-testes-${{ matrix.pacote.nome }}
+          path: relatorio/
+          retention-days: 7
+
+      - name: Cobertura (lcov)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cobertura-${{ matrix.pacote.nome }}
+          path: ${{ matrix.pacote.caminho }}/coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - if: steps.jest.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Empacotamento — um job por microserviço.
+  #
+  # Não depende de `tipos`: o esbuild não checa tipo, então esperar a verificação
+  # de tipos só atrasaria o artefato sem tornar o build mais correto. Quem barra
+  # o merge é o conjunto, não a ordem.
+  # ---------------------------------------------------------------------------
+  empacotar:
+    name: Empacotar · ${{ matrix.servico.nome }}
     runs-on: ubuntu-latest
-    needs: qualidade
+    needs: plano
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        servico: ${{ fromJSON(needs.plano.outputs.servicos) }}
 
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
+
+      - id: build
+        continue-on-error: true
+        run: |
+          inicio=$(date +%s%3N)
+          pnpm --filter ./${{ matrix.servico.caminho }} build 2>&1 | tee "$RUNNER_TEMP/build.log"
+          echo "duracao-ms=$(( $(date +%s%3N) - inicio ))" >> "$GITHUB_OUTPUT"
+
+      - if: always()
+        run: |
+          node .github/scripts/resumo-build.mjs \
+            --servico "${{ matrix.servico.nome }}" \
+            --dir "${{ matrix.servico.caminho }}" \
+            --resultado "${{ steps.build.outcome }}" \
+            --duracao-ms "${{ steps.build.outputs.duracao-ms }}" \
+            --log "$RUNNER_TEMP/build.log" \
+            --ordem 40
+
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          name: relatorio-build-${{ matrix.servico.nome }}
+          path: relatorio/
+          retention-days: 7
+
+      - name: Artefato da Lambda
+        uses: actions/upload-artifact@v4
+        if: steps.build.outcome == 'success'
+        with:
+          # Nome por serviço: o Serverless usa o nome do arquivo como chave no S3,
+          # e quatro `function.zip` na mesma chave fazem as quatro funções rodarem
+          # o mesmo código. Aqui o problema é o mesmo, com outro nome.
+          name: lambda-${{ matrix.servico.nome }}
+          path: ${{ matrix.servico.caminho }}/dist/function.zip
+          retention-days: 14
+
+      - if: steps.build.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Infraestrutura como código. Sem credencial: `init -backend=false` valida o
+  # HCL sem tocar em estado nem em nuvem nenhuma.
+  # ---------------------------------------------------------------------------
+  terraform:
+    name: Terraform (formato e validação)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          instalar: "false"
 
       # O runner do Ubuntu não traz Terraform — sem esta etapa o passo de
       # validação morre com `terraform: command not found`.
@@ -107,22 +365,328 @@ jobs:
           # atrapalha a propagação do código de saída de `fmt -check`.
           terraform_wrapper: false
 
-      - run: pnpm install --frozen-lockfile
-
-      # O build carrega o bundle e confere que ele exporta `lambdaHandler`. Um
-      # `require` mal resolvido só falha ao ser executado, e descobrir isso como
-      # crash de cold start dentro da Lambda é um péssimo lugar para depurar.
-      - name: Empacotar os microserviços
-        run: pnpm --filter './apps/api/functions/*' build
-
-      - name: Validar o Terraform
+      - id: validacao
+        continue-on-error: true
         run: |
-          terraform -chdir=infra/terraform init -backend=false
-          terraform -chdir=infra/terraform validate
-          terraform -chdir=infra/terraform fmt -check -recursive
+          {
+            terraform -chdir=infra/terraform init -backend=false -input=false
+            terraform -chdir=infra/terraform validate
+            terraform -chdir=infra/terraform fmt -check -recursive
+          } 2>&1 | tee "$RUNNER_TEMP/terraform.log"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id terraform --ordem 50 --titulo "Terraform · formato e validação" \
+            --resultado "${{ steps.validacao.outcome }}" \
+            --log "$RUNNER_TEMP/terraform.log" \
+            --resumo-ok "HCL válido e formatado. Módulos de base e de serviços inicializados sem backend." \
+            --resumo-falha "HCL inválido ou fora do formato — rode \`terraform fmt -recursive\`."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-terraform
+          path: relatorio/
+          retention-days: 7
+
+      - if: steps.validacao.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Backoffice. Lint e build separados no relatório porque falham por motivos
+  # diferentes e se resolvem em lugares diferentes.
+  # ---------------------------------------------------------------------------
+  web:
+    name: Backoffice (lint e build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - id: lint
+        continue-on-error: true
+        run: pnpm --filter @saude-bliss/web lint 2>&1 | tee "$RUNNER_TEMP/web-lint.log"
+
+      - id: build
+        continue-on-error: true
+        run: pnpm --filter @saude-bliss/web build 2>&1 | tee "$RUNNER_TEMP/web-build.log"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id web --ordem 55 --titulo "Backoffice · lint e build" \
+            --situacao "${{ (steps.lint.outcome == 'success' && steps.build.outcome == 'success') && 'ok' || 'falha' }}" \
+            --log "$RUNNER_TEMP/web-build.log" \
+            --resumo-ok "ESLint limpo e \`next build\` concluído." \
+            --resumo-falha "Lint: ${{ steps.lint.outcome }} · Build: ${{ steps.build.outcome }}."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-web
+          path: relatorio/
+          retention-days: 7
+
+      - if: steps.lint.outcome == 'failure' || steps.build.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Automação da conferência.
+  #
+  # Sobe a pilha inteira no runner — Postgres, API agregada e backoffice — e
+  # roda a suíte Playwright contra ela. É o único job que exercita o produto do
+  # jeito que a operação usa; os outros exercitam pedaços.
+  # ---------------------------------------------------------------------------
+  automacao:
+    name: Automação da conferência
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: saudebliss
+          POSTGRES_PASSWORD: saudebliss
+          POSTGRES_DB: saudebliss
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      BLISS_ENV: local
+      DATABASE_URL: postgresql://saudebliss:saudebliss@localhost:5433/saudebliss
+      JWT_SECRET: chave-de-teste-com-mais-de-32-caracteres-para-hs256
+      API_BASE_URL: http://localhost:4000/v1
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/v1
+      WEB_BASE_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "4000"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Migrations e seed
+        run: |
+          pnpm --filter @saude-bliss/database db:migrate
+          pnpm --filter @saude-bliss/database db:seed
+
+      # O cache guarda o Chromium (~150 MB). Sem ele, cada execução baixa o
+      # browser de novo e o download passa de metade do tempo do job.
+      - uses: actions/cache@v4
+        id: cache-browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - run: pnpm --filter @saude-bliss/automation exec playwright install --with-deps chromium
+
+      - name: Subir a API agregada
+        run: |
+          nohup pnpm --filter @saude-bliss/api dev > "$RUNNER_TEMP/api.log" 2>&1 &
+          # `--retry-connrefused` porque o ts-node-dev leva alguns segundos até
+          # abrir a porta, e sem ele o primeiro curl falha na conexão recusada.
+          curl --retry 40 --retry-delay 2 --retry-connrefused --retry-all-errors \
+            -fsS http://localhost:4000/v1/requests/health
+
+      - name: Subir o backoffice
+        run: |
+          pnpm --filter @saude-bliss/web build
+          nohup pnpm --filter @saude-bliss/web start > "$RUNNER_TEMP/web.log" 2>&1 &
+          curl --retry 40 --retry-delay 2 --retry-connrefused --retry-all-errors -fsS http://localhost:3000 -o /dev/null
+
+      - id: playwright
+        continue-on-error: true
+        working-directory: apps/automation
+        run: npx playwright test --project=chromium-headless 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+
+      - if: always()
+        run: |
+          node .github/scripts/resumo-automacao.mjs \
+            --arquivo apps/automation/reports/results.json \
+            --resultado "${{ steps.playwright.outcome }}" \
+            --log "$RUNNER_TEMP/playwright.log" \
+            --ordem 70
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-automacao
+          path: relatorio/
+          retention-days: 7
+
+      - name: Relatório HTML, traces e CSV da conferência
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: automacao-evidencias
+          path: |
+            apps/automation/reports/
+            apps/automation/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Logs dos processos
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: automacao-logs
+          path: |
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - if: steps.playwright.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Ensaio de deploy.
+  #
+  # Provisiona o sistema inteiro no LocalStack com o mesmo Terraform que vai para
+  # a AWS, aplica migrations e roda o smoke test. É a diferença entre "o código
+  # compila" e "o sistema sobe".
+  #
+  # Opt-in: leva minutos e depende de Docker-in-Docker. Roda por
+  # `workflow_dispatch`, quando o `deploy.yml` chama, ou com a etiqueta
+  # `ensaio-de-deploy` no pull request.
+  # ---------------------------------------------------------------------------
+  ensaio:
+    name: Ensaio de deploy (LocalStack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      inputs.ensaio-de-deploy ||
+      contains(github.event.pull_request.labels.*.name, 'ensaio-de-deploy')
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Subir a infraestrutura local
+        run: |
+          cp .env.example .env
+          docker compose up -d
+          ./scripts/localstack/wait-ready.sh
+
+      # build → terraform apply → migrations → seed → smoke, na ordem que o
+      # Terraform exige (ele lê o zip pelo hash do conteúdo).
+      - id: deploy
+        continue-on-error: true
+        run: pnpm deploy:local 2>&1 | tee "$RUNNER_TEMP/ensaio.log"
+
+      - name: Outputs do deploy
+        if: always()
+        continue-on-error: true
+        run: terraform -chdir=infra/terraform output -json > "$RUNNER_TEMP/outputs.json"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id ensaio --ordem 80 --titulo "Ensaio de deploy (LocalStack)" \
+            --resultado "${{ steps.deploy.outcome }}" \
+            --log "$RUNNER_TEMP/ensaio.log" --linhas-do-log 80 \
+            --resumo-ok "Sistema provisionado e smoke test verde — API Gateway, quatro Lambdas, segredos e migrations." \
+            --resumo-falha "O sistema não subiu ponta a ponta. O log tem o passo exato onde parou." \
+            --detalhe "Mesmo HCL que provisiona a AWS, com \`use_localstack = true\`. O que o ensaio **não** cobre: o authorizer na borda, que o API Gateway do LocalStack Community não executa — o smoke detecta isso e valida o authorizer por invocação direta."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-ensaio
+          path: relatorio/
+          retention-days: 7
+
+      - name: Logs do LocalStack
+        if: failure()
+        run: docker compose logs --no-color > "$RUNNER_TEMP/localstack.log" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ensaio-evidencias
+          path: |
+            ${{ runner.temp }}/outputs.json
+            ${{ runner.temp }}/localstack.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - if: steps.deploy.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Consolidação.
+  #
+  # `always()` porque relatório que só sai quando tudo passa é relatório que não
+  # serve — o dia em que se precisa dele é justamente o dia em que algo quebrou.
+  #
+  # É o job para marcar como obrigatório na proteção de branch: ele falha se
+  # qualquer etapa falhou, e é um só nome em vez de uma lista que precisa ser
+  # atualizada a cada job novo.
+  # ---------------------------------------------------------------------------
+  relatorio:
+    name: Relatório do pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    needs: [plano, formato, tipos, rotas, testes, empacotar, terraform, web, automacao, ensaio]
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    outputs:
+      situacao: ${{ steps.consolidar.outputs.situacao }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: relatorio-*
+          merge-multiple: true
+          path: relatorio
+
+      - id: consolidar
+        run: |
+          node .github/scripts/consolidar.mjs \
+            --dir relatorio \
+            --titulo "Relatório de CI — ${{ github.ref_name }}" \
+            --marcador "bliss:relatorio-ci" \
+            --saida relatorio-final.md
+
+      - name: Comentar no pull request
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/comentar-pr.mjs --arquivo relatorio-final.md --marcador "bliss:relatorio-ci"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lambda-packages
-          path: apps/api/functions/*/dist/function.zip
-          retention-days: 7
+          name: relatorio-final
+          path: relatorio-final.md
+          retention-days: 30
+
+      # A verificação vem depois de publicar: o relatório de uma execução
+      # vermelha é o mais importante dos dois, e não pode ser perdido por um
+      # `exit 1` antecipado.
+      - name: Situação consolidada
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::Uma ou mais etapas falharam — veja a tabela no resumo desta execução."
+          exit 1

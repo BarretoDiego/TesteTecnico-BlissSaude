@@ -2,7 +2,7 @@
 
 > Última atualização: 2026-07-31
 
-Guia de padrões para agentes e pessoas trabalhando neste repositório. As regras aqui **sobrepõem** comportamento padrão.
+Guia de padrões para quem trabalha neste repositório. As convenções aqui valem sobre qualquer preferência pessoal ou default de ferramenta.
 
 ## 🏗️ Arquitetura
 

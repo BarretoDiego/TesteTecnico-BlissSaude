@@ -1,9 +1,9 @@
 /**
  * Configuração do Playwright.
  *
- * Dois projects — headless e headed — porque o desafio pede execução nos dois
- * modos, e a separação faz isso ser uma escolha de linha de comando em vez de
- * uma variável de ambiente que alguém esquece de definir.
+ * Dois projects — headless e headed — para que o modo de execução seja uma
+ * escolha de linha de comando, em vez de uma variável de ambiente que alguém
+ * esquece de definir.
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -60,8 +60,8 @@ export default defineConfig({
 		},
 		{
 			name: "chromium-headed",
-			// `slowMo` deixa a execução acompanhável por uma pessoa — é o modo que
-			// se usa para demonstrar o fluxo, não para rodar no pipeline.
+			// `slowMo` deixa a execução acompanhável por uma pessoa — é o modo de
+			// acompanhar o fluxo na tela, não o de rodar no pipeline.
 			use: { ...devices["Desktop Chrome"], headless: false, launchOptions: { slowMo: 300 } },
 		},
 	],

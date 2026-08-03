@@ -2,8 +2,8 @@
 # =============================================================================
 # Smoke test contra a API implantada.
 #
-# Exercita exatamente os endpoints que o desafio especifica, mais a conferência,
-# e confere o requestId ponta a ponta. É a evidência de deploy funcional.
+# Exercita os endpoints públicos de solicitações, mais a conferência, e confere o
+# requestId ponta a ponta. É a evidência de deploy funcional.
 # =============================================================================
 set -euo pipefail
 

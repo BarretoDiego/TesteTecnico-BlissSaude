@@ -16,8 +16,8 @@
  *
  * Em produção de verdade a resposta é RDS Proxy, que multiplexa conexões e
  * remove o acoplamento entre concorrência de Lambda e limite do banco. Não foi
- * implementado aqui de propósito: o suporte do LocalStack é parcial e não
- * agregaria nada à demonstração. Ver docs/adr/0004-rds-e-pool-de-conexoes.md.
+ * adotado no ambiente local porque o suporte do LocalStack é parcial. Ver
+ * docs/adr/0004-rds-e-pool-de-conexoes.md.
  */
 
 import { logger, secretsService } from "@saude-bliss/core";

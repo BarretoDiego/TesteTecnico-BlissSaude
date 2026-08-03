@@ -1,0 +1,525 @@
+# =============================================================================
+# Deploy — provisiona um ambiente com Terraform e prova que ele subiu.
+#
+# ## Forma
+#
+#   contexto ─┬─ verificação (chama o CI inteiro)  ─┐
+#             └─ empacotar (um job por serviço)  ───┼─ plano ─ [aprovação] ─ aplicar ─ pós-deploy ─ relatório
+#
+# Verificação e empacotamento correm juntos: são independentes, e serializá-los
+# só somaria os dois tempos. O que **não** corre em paralelo é plano → aplicar →
+# smoke: cada um depende do resultado do anterior de verdade.
+#
+# ## Portões
+#
+# O `aplicar` roda num GitHub Environment, que é onde vive a regra de aprovação.
+# Configure revisor obrigatório em `stage` e `prod` — nada neste arquivo garante
+# isso, e é assim de propósito: quem aprova produção é política do repositório,
+# não literal de YAML.
+#
+# ## Terraform é a única coisa que toca infraestrutura
+#
+# O Serverless Framework é emulador local e packager. Ver `docs/adr/0002`.
+# =============================================================================
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Ambiente alvo.
+        type: choice
+        options: [dev, stage, prod]
+        default: dev
+      somente-plano:
+        description: Parar depois do plano, sem aplicar. Serve para revisar mudança de infraestrutura.
+        type: boolean
+        default: false
+      pular-verificacao:
+        description: Não rodar o CI antes. Use só quando o commit já passou pelo CI.
+        type: boolean
+        default: false
+      semear:
+        description: Rodar o seed após as migrations. Nunca em produção.
+        type: boolean
+        default: false
+
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  # Necessário para assumir a role da AWS por OIDC — sem chave de acesso de longa
+  # duração guardada em secret, que é o padrão que se quer evitar.
+  id-token: write
+  # O CI é chamado daqui como workflow reutilizável, e o job de relatório dele
+  # comenta no pull request. Workflow chamado não pode ter mais permissão que
+  # quem chama: sem esta linha, aquele job falharia por permissão negada.
+  pull-requests: write
+
+# Sem `cancel-in-progress`: cancelar um deploy no meio do `apply` deixa o estado
+# do Terraform divergente do que está no ar, que é pior do que esperar.
+concurrency:
+  group: deploy-${{ inputs.ambiente || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  RELATORIO_DIR: ${{ github.workspace }}/relatorio
+  TERRAFORM_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Contexto: resolve o alvo e confere se o repositório está configurado para
+  # deployar. Sem isso, um repositório recém-clonado falharia no meio do
+  # `terraform init` com erro de credencial — que não explica o que falta.
+  # ---------------------------------------------------------------------------
+  contexto:
+    name: Contexto do deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      ambiente: ${{ steps.resolver.outputs.ambiente }}
+      pronto: ${{ steps.resolver.outputs.pronto }}
+      servicos: ${{ steps.matriz.outputs.servicos }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: matriz
+        run: node .github/scripts/matriz.mjs
+
+      - id: resolver
+        env:
+          # Push em `main` implanta `dev`. Promoção para stage e prod é ato
+          # deliberado, por `workflow_dispatch` — merge não deve implantar
+          # produção por efeito colateral.
+          AMBIENTE: ${{ inputs.ambiente || 'dev' }}
+          ROLE: ${{ secrets.AWS_ROLE_ARN }}
+          BUCKET: ${{ vars.TF_BACKEND_BUCKET }}
+        run: |
+          echo "ambiente=$AMBIENTE" >> "$GITHUB_OUTPUT"
+
+          faltando=()
+          [ -n "$ROLE" ] || faltando+=("secret \`AWS_ROLE_ARN\`")
+          [ -n "$BUCKET" ] || faltando+=("variável \`TF_BACKEND_BUCKET\`")
+          [ -f "infra/terraform/environments/$AMBIENTE.tfvars" ] || faltando+=("arquivo \`infra/terraform/environments/$AMBIENTE.tfvars\`")
+
+          if [ ${#faltando[@]} -eq 0 ]; then
+            echo "pronto=true" >> "$GITHUB_OUTPUT"
+            situacao=ok
+            resumo="Alvo **$AMBIENTE** · commit \`${GITHUB_SHA:0:7}\` · estado no S3 \`$BUCKET\`."
+            detalhe="O plano roda em seguida. O \`apply\` só acontece depois da aprovação configurada no GitHub Environment \`$AMBIENTE\`."
+          else
+            echo "pronto=false" >> "$GITHUB_OUTPUT"
+            situacao=alerta
+            resumo="Deploy não executado: o repositório ainda não está configurado para implantar."
+            detalhe=$(printf '**Falta configurar:**\n\n%s\n\nVeja `docs/standards/devops/pipeline.md` para o que cada item significa.' "$(printf -- '- %s\n' "${faltando[@]}")")
+          fi
+
+          node .github/scripts/fragmento.mjs \
+            --id contexto --ordem 0 --titulo "Contexto do deploy" \
+            --situacao "$situacao" --resumo "$resumo" --detalhe "$detalhe"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-contexto
+          path: relatorio/
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # A mesma verificação do CI, inteira. Reutilizada em vez de reescrita: uma
+  # cópia reduzida aqui é como um deploy passa a publicar o que o CI barraria.
+  # ---------------------------------------------------------------------------
+  verificacao:
+    name: Verificação
+    uses: ./.github/workflows/ci.yml
+    if: inputs.pular-verificacao != true
+    with:
+      ensaio-de-deploy: false
+
+  # ---------------------------------------------------------------------------
+  # Empacotamento com o alvo certo: `build:dev`, `build:stage`, `build:prod`.
+  # O bundle carrega o ambiente, então o artefato de dev não serve para prod.
+  # ---------------------------------------------------------------------------
+  empacotar:
+    name: Empacotar · ${{ matrix.servico.nome }}
+    runs-on: ubuntu-latest
+    needs: contexto
+    if: needs.contexto.outputs.pronto == 'true'
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: true
+      matrix:
+        servico: ${{ fromJSON(needs.contexto.outputs.servicos) }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - id: build
+        run: |
+          inicio=$(date +%s%3N)
+          pnpm --filter ./${{ matrix.servico.caminho }} build:${{ needs.contexto.outputs.ambiente }} 2>&1 \
+            | tee "$RUNNER_TEMP/build.log"
+          echo "duracao-ms=$(( $(date +%s%3N) - inicio ))" >> "$GITHUB_OUTPUT"
+
+      - if: always()
+        run: |
+          node .github/scripts/resumo-build.mjs \
+            --servico "${{ matrix.servico.nome }}" \
+            --dir "${{ matrix.servico.caminho }}" \
+            --resultado "${{ steps.build.outcome }}" \
+            --duracao-ms "${{ steps.build.outputs.duracao-ms }}" \
+            --log "$RUNNER_TEMP/build.log" \
+            --ordem 10
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-build-${{ matrix.servico.nome }}
+          path: relatorio/
+          retention-days: 30
+
+      - name: Artefato da Lambda
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-${{ matrix.servico.nome }}
+          path: ${{ matrix.servico.caminho }}/dist/function.zip
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Plano. Roda antes da aprovação porque é o plano que a pessoa precisa ler
+  # para decidir se aprova — aprovar às cegas e descobrir a destruição no apply
+  # é o modo de falha que este job existe para evitar.
+  # ---------------------------------------------------------------------------
+  plano:
+    name: Plano do Terraform
+    runs-on: ubuntu-latest
+    needs: [contexto, empacotar]
+    if: needs.contexto.outputs.pronto == 'true'
+    timeout-minutes: 20
+
+    env:
+      AMBIENTE: ${{ needs.contexto.outputs.ambiente }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      TF_VAR_jwt_signing_key: ${{ secrets.JWT_SIGNING_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          instalar: "false"
+
+      # Os artefatos vêm dos jobs de empacotamento, e não de um build refeito
+      # aqui: o Terraform lê o zip pelo `filebase64sha256`, então o que for
+      # planejado precisa ser byte a byte o que foi verificado.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lambda-*
+          path: ${{ runner.temp }}/artefatos
+
+      - name: Recolocar os artefatos
+        run: |
+          for caminho in "$RUNNER_TEMP"/artefatos/lambda-*/function.zip; do
+            servico=$(basename "$(dirname "$caminho")" | sed 's/^lambda-//')
+            destino="apps/api/functions/$servico/dist"
+            mkdir -p "$destino"
+            cp "$caminho" "$destino/function.zip"
+            printf '%s → %s\n' "$servico" "$destino/function.zip"
+          done
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Inicializar com estado remoto
+        run: |
+          cp .github/terraform/backend-s3.tf infra/terraform/backend-s3.tf
+          terraform -chdir=infra/terraform init \
+            -backend-config="bucket=${{ vars.TF_BACKEND_BUCKET }}" \
+            -backend-config="key=saude-bliss/$AMBIENTE/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            ${{ vars.TF_BACKEND_TABLE && format('-backend-config="dynamodb_table={0}"', vars.TF_BACKEND_TABLE) || '' }}
+
+      - id: plan
+        continue-on-error: true
+        run: |
+          terraform -chdir=infra/terraform plan \
+            -var-file="environments/$AMBIENTE.tfvars" \
+            -out=plano.tfplan 2>&1 | tee "$RUNNER_TEMP/plano.txt"
+          terraform -chdir=infra/terraform show -json plano.tfplan > "$RUNNER_TEMP/plano.json"
+
+      - if: always()
+        run: |
+          node .github/scripts/resumo-terraform.mjs \
+            --plano "$RUNNER_TEMP/plano.json" \
+            --log "$RUNNER_TEMP/plano.txt" \
+            --ambiente "$AMBIENTE" \
+            --resultado "${{ steps.plan.outcome }}" \
+            --ordem 20
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-plano-terraform
+          path: relatorio/
+          retention-days: 30
+
+      # O plano salvo é o que o `apply` consome. Aplicar um plano recalculado
+      # depois da aprovação significaria aplicar algo que ninguém revisou.
+      - uses: actions/upload-artifact@v4
+        if: steps.plan.outcome == 'success'
+        with:
+          name: plano-terraform
+          path: infra/terraform/plano.tfplan
+          retention-days: 30
+
+      - if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Aplicação. O `environment` é o portão: revisor obrigatório, janela de espera
+  # e segredos por ambiente são configurados lá, não aqui.
+  # ---------------------------------------------------------------------------
+  aplicar:
+    name: Aplicar em ${{ needs.contexto.outputs.ambiente }}
+    runs-on: ubuntu-latest
+    needs: [contexto, plano, verificacao]
+    if: always() && needs.plano.result == 'success' && inputs.somente-plano != true && (needs.verificacao.result == 'success' || needs.verificacao.result == 'skipped')
+    timeout-minutes: 30
+    environment: ${{ needs.contexto.outputs.ambiente }}
+
+    outputs:
+      api: ${{ steps.saidas.outputs.api }}
+
+    env:
+      AMBIENTE: ${{ needs.contexto.outputs.ambiente }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+      TF_VAR_jwt_signing_key: ${{ secrets.JWT_SIGNING_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          instalar: "false"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lambda-*
+          path: ${{ runner.temp }}/artefatos
+
+      - name: Recolocar os artefatos
+        run: |
+          for caminho in "$RUNNER_TEMP"/artefatos/lambda-*/function.zip; do
+            servico=$(basename "$(dirname "$caminho")" | sed 's/^lambda-//')
+            mkdir -p "apps/api/functions/$servico/dist"
+            cp "$caminho" "apps/api/functions/$servico/dist/function.zip"
+          done
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: plano-terraform
+          path: infra/terraform
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Inicializar com estado remoto
+        run: |
+          cp .github/terraform/backend-s3.tf infra/terraform/backend-s3.tf
+          terraform -chdir=infra/terraform init \
+            -backend-config="bucket=${{ vars.TF_BACKEND_BUCKET }}" \
+            -backend-config="key=saude-bliss/$AMBIENTE/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            ${{ vars.TF_BACKEND_TABLE && format('-backend-config="dynamodb_table={0}"', vars.TF_BACKEND_TABLE) || '' }}
+
+      - id: apply
+        continue-on-error: true
+        run: terraform -chdir=infra/terraform apply -auto-approve plano.tfplan 2>&1 | tee "$RUNNER_TEMP/apply.log"
+
+      - id: saidas
+        if: steps.apply.outcome == 'success'
+        run: |
+          terraform -chdir=infra/terraform output -json > "$RUNNER_TEMP/outputs.json"
+          url=$(terraform -chdir=infra/terraform output -raw api_base_url)
+          echo "api=$url" >> "$GITHUB_OUTPUT"
+          # Mascarado antes de qualquer outro uso: a connection string tem senha,
+          # e `set -x` ou um erro de comando a jogaria no log em texto puro.
+          echo "::add-mask::$(terraform -chdir=infra/terraform output -raw database_url)"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id aplicar --ordem 30 --titulo "Aplicação em ${{ env.AMBIENTE }}" \
+            --resultado "${{ steps.apply.outcome }}" \
+            --log "$RUNNER_TEMP/apply.log" \
+            --resumo-ok "Infraestrutura aplicada. API em \`${{ steps.saidas.outputs.api }}\`." \
+            --resumo-falha "O apply falhou. O estado no S3 continua consistente com o que foi de fato criado — releia o plano antes de repetir."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-aplicar
+          path: relatorio/
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: steps.apply.outcome == 'success'
+        with:
+          name: terraform-outputs
+          path: ${{ runner.temp }}/outputs.json
+          retention-days: 30
+
+      - if: steps.apply.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Pós-deploy: migrations e smoke.
+  #
+  # Um job só, e não dois, porque a connection string sai do estado do Terraform
+  # e não deve trafegar em `outputs` de job — output de job não é criptografado.
+  # Aqui ela nasce e morre no mesmo runner.
+  # ---------------------------------------------------------------------------
+  pos-deploy:
+    name: Migrations e smoke
+    runs-on: ubuntu-latest
+    needs: [contexto, aplicar]
+    if: needs.aplicar.result == 'success'
+    timeout-minutes: 20
+    environment: ${{ needs.contexto.outputs.ambiente }}
+
+    env:
+      AMBIENTE: ${{ needs.contexto.outputs.ambiente }}
+      API_BASE_URL: ${{ needs.aplicar.outputs.api }}
+      # O smoke emite um token assinado com a mesma chave que o Terraform grava
+      # no Secrets Manager. Chaves diferentes dariam 403 sem indicar a causa.
+      JWT_SECRET: ${{ secrets.JWT_SIGNING_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Migrations
+        id: migrations
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_MIGRATION_URL }}
+        run: |
+          # Sem a URL não há o que fazer, e falhar aqui seria enganoso: não é
+          # erro, é caminho não configurado. A distinção vai para o relatório.
+          if [ -z "$DATABASE_URL" ]; then
+            echo "executou=nao" >> "$GITHUB_OUTPUT"
+            echo "sem DATABASE_MIGRATION_URL — nada a fazer" | tee "$RUNNER_TEMP/migrations.log"
+            exit 0
+          fi
+
+          echo "executou=sim" >> "$GITHUB_OUTPUT"
+          pnpm --filter @saude-bliss/database db:migrate 2>&1 | tee "$RUNNER_TEMP/migrations.log"
+
+          # Seed nunca em produção, mesmo que alguém marque a caixa: dado de
+          # exemplo em base real é o tipo de estrago que não tem desfazer.
+          if [ "${{ inputs.semear }}" = "true" ] && [ "$AMBIENTE" != "prod" ]; then
+            pnpm --filter @saude-bliss/database db:seed 2>&1 | tee -a "$RUNNER_TEMP/migrations.log"
+          fi
+
+      - if: always()
+        run: |
+          if [ "${{ steps.migrations.outputs.executou }}" = "nao" ]; then
+            situacao=pulado
+          elif [ "${{ steps.migrations.outcome }}" = "success" ]; then
+            situacao=ok
+          else
+            situacao=falha
+          fi
+
+          node .github/scripts/fragmento.mjs \
+            --id migrations --ordem 40 --titulo "Migrations" \
+            --situacao "$situacao" \
+            --log "$RUNNER_TEMP/migrations.log" \
+            --resumo-ok "Schema aplicado no banco de \`$AMBIENTE\`." \
+            --resumo-falha "As migrations rodaram e falharam — o log tem o erro do driver." \
+            --resumo-pulado "Nenhum caminho de migração configurado para \`$AMBIENTE\`. **O código novo pode estar rodando contra o schema antigo** — veja o detalhe." \
+            --detalhe-arquivo .github/relatorio/migrations-sem-caminho.md
+
+      - name: Smoke test
+        id: smoke
+        continue-on-error: true
+        run: ./scripts/localstack/smoke.sh 2>&1 | tee "$RUNNER_TEMP/smoke.log"
+
+      - if: always()
+        run: |
+          node .github/scripts/fragmento.mjs \
+            --id smoke --ordem 50 --titulo "Smoke test em ${{ env.AMBIENTE }}" \
+            --resultado "${{ steps.smoke.outcome }}" \
+            --log "$RUNNER_TEMP/smoke.log" --linhas-do-log 60 \
+            --resumo-ok "A API implantada responde: rotas públicas, authorizer na borda, criação, consulta, filtros, conferência e rastreabilidade do requestId." \
+            --resumo-falha "A API está no ar mas não se comporta como esperado — o log mostra qual asserção quebrou." \
+            --detalhe "Alvo: \`${{ env.API_BASE_URL }}\`"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-pos-deploy
+          path: relatorio/
+          retention-days: 30
+
+      - if: steps.smoke.outcome == 'failure'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # Relatório do deploy. Mesma consolidação do CI, outro título e outro marcador
+  # — a lógica é uma só porque o formato precisa ser um só.
+  # ---------------------------------------------------------------------------
+  relatorio:
+    name: Relatório do deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    needs: [contexto, verificacao, empacotar, plano, aplicar, pos-deploy]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: relatorio-*
+          merge-multiple: true
+          path: relatorio
+
+      - run: |
+          node .github/scripts/consolidar.mjs \
+            --dir relatorio \
+            --titulo "Relatório de deploy — ${{ needs.contexto.outputs.ambiente }}" \
+            --marcador "bliss:relatorio-deploy" \
+            --saida relatorio-deploy.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-final-deploy
+          path: relatorio-deploy.md
+          retention-days: 90
+
+      - name: Situação consolidada
+        if: contains(needs.*.result, 'failure')
+        run: |
+          echo "::error::O deploy não completou — veja a tabela no resumo desta execução."
+          exit 1

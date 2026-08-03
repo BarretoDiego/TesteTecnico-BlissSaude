@@ -1,6 +1,6 @@
 # Documentação
 
-> Última atualização: 2026-07-31
+> Última atualização: 2026-08-03
 
 Ponto de entrada. A tabela abaixo mapeia **o que você quer fazer** para o arquivo.
 
@@ -8,7 +8,9 @@ Ponto de entrada. A tabela abaixo mapeia **o que você quer fazer** para o arqui
 
 | Quero…                                     | Vá para                                                              |
 | ------------------------------------------ | -------------------------------------------------------------------- |
-| entender o projeto e rodá-lo               | [`README.md`](../README.md)                                          |
+| subir o projeto do zero, num comando       | [README → Início rápido](../README.md#-início-rápido)                |
+| implantar com Terraform ou com Serverless  | [README → Deploy](../README.md#-deploy)                              |
+| testar tudo localmente                     | [README → Verificação](../README.md#-verificação)                    |
 | escrever código seguindo o padrão          | [`CLAUDE.md`](../CLAUDE.md)                                          |
 | saber por que há quatro microserviços      | [ADR 0001](adr/0001-microservicos-por-dominio.md)                    |
 | saber por que Serverless **e** Terraform   | [ADR 0002](adr/0002-serverless-framework-vs-terraform.md)            |

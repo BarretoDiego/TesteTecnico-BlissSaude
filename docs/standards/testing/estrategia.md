@@ -1,6 +1,6 @@
 # Estratégia de testes
 
-> Última atualização: 2026-07-31
+> Última atualização: 2026-08-03
 
 ## Camadas
 
@@ -12,18 +12,39 @@
 | `e2e`         | `__tests__/e2e/`         | Postgres real com migrations        | precisa do compose |
 
 ```bash
-pnpm --filter @saude-bliss/bliss-requests test              # todas
-pnpm --filter @saude-bliss/bliss-requests test:unit         # só unidade
+pnpm test                                                   # as oito suítes
+pnpm test:api                                               # só os microserviços
+pnpm test:packages                                          # só os compartilhados
+pnpm test:web                                               # só o backoffice
+
+pnpm --filter @saude-bliss/bliss-requests test              # uma suíte inteira
+pnpm --filter @saude-bliss/bliss-requests test:unit         # só uma camada
 SKIP_E2E=1 pnpm --filter @saude-bliss/bliss-requests test   # pula e2e
 ```
 
+A camada `e2e` exige o Postgres do compose (`pnpm infra:up`) com as migrations
+aplicadas (`pnpm db:migrate`). Sem banco ela falha; `SKIP_E2E=1` a remove da
+execução.
+
 ## Onde os testes moram
 
-Junto do código que testam. O runtime compartilhado é testado em
-`packages/core/__tests__` porque uma regressão ali quebra todos os serviços de uma
-vez e precisa ser pega no próprio pacote. Factories e duplos vêm de
-`@saude-bliss/testing` — uma mudança de schema atualiza um lugar em vez de divergir
-por serviço.
+Junto do código que testam — oito suítes, uma por pacote:
+
+| Suíte                       | Onde                                    |
+| --------------------------- | --------------------------------------- |
+| os quatro microserviços     | `apps/api/functions/bliss-*/__tests__/` |
+| runtime compartilhado       | `packages/core/__tests__/`              |
+| contratos (enums, schemas)  | `packages/contracts/__tests__/`         |
+| persistência (env, mappers) | `packages/database/__tests__/`          |
+| backoffice                  | `apps/web/__tests__/`                   |
+
+Os pacotes compartilhados têm suíte própria porque uma regressão ali quebra todos
+os serviços de uma vez e precisa ser pega no pacote, não no consumidor. Factories
+e duplos vêm de `@saude-bliss/testing` — uma mudança de schema atualiza um lugar em
+vez de divergir por serviço.
+
+O fluxo pelo browser fica fora dessa contagem: é a suíte Playwright em
+`apps/automation/`, que roda contra o sistema implantado (`pnpm test:e2e`).
 
 ## Convenções
 

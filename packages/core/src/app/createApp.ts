@@ -52,7 +52,7 @@ function createInstance(): FastifyInstance {
 		bodyLimit: 1024 * 1024,
 		/**
 		 * Com prefixo de domínio, a rota raiz do serviço vira `/v1/requests/`. O
-		 * desafio especifica `POST /requests`, e um cliente HTTP qualquer não
+		 * contrato publicado é `POST /requests`, e um cliente HTTP qualquer não
 		 * acrescenta a barra. Aceitar as duas formas é o comportamento esperado de
 		 * uma API pública — sem isso, um `curl` sem barra recebe 404.
 		 */

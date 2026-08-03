@@ -1,10 +1,10 @@
 /**
  * @module api/db/seed
  *
- * Popula o banco com solicitações de demonstração.
+ * Popula o banco com solicitações de exemplo.
  *
- * Dá ao avaliador uma tela de conferência com conteúdo já no primeiro acesso, e
- * ao backoffice dados suficientes para exercitar filtros e paginação.
+ * Entrega uma tela de conferência com conteúdo já no primeiro acesso, e dados
+ * suficientes para exercitar filtros e paginação no backoffice.
  *
  * Os dados são determinísticos de propósito — sem faker, sem aleatoriedade. Um
  * seed reproduzível permite que a suíte Playwright faça asserções sobre contagens
@@ -100,10 +100,10 @@ const SEED: readonly SeedRequest[] = [
 ];
 
 /**
- * Usuários de demonstração.
+ * Usuários de exemplo.
  *
  * Senha única e óbvia de propósito: é ambiente local, e uma senha "esperta" só
- * faria o avaliador perder tempo procurando onde ela está escrita. O hash é
+ * faria quem sobe o projeto perder tempo procurando onde ela está escrita. O hash é
  * derivado no seed, nunca versionado — commitar hash de senha, mesmo de
  * desenvolvimento, ensina o hábito errado.
  */

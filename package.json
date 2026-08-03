@@ -2,7 +2,7 @@
 	"name": "saude-bliss",
 	"version": "1.0.0",
 	"private": true,
-	"description": "Gestão de solicitações — API serverless (Node + TypeScript + Serverless Framework + Terraform) e automação de conferência com Playwright",
+	"description": "Gest\u00e3o de solicita\u00e7\u00f5es \u2014 API serverless (Node + TypeScript + Serverless Framework + Terraform) e automa\u00e7\u00e3o de confer\u00eancia com Playwright",
 	"packageManager": "pnpm@10.30.0",
 	"engines": {
 		"node": ">=22 <23"
@@ -27,8 +27,10 @@
 		"dev:api": "pnpm --filter @saude-bliss/api dev",
 		"dev:web": "pnpm --filter @saude-bliss/web dev",
 		"build": "pnpm --filter @saude-bliss/api build && pnpm --filter @saude-bliss/web build",
-		"test": "pnpm --filter @saude-bliss/api test",
-		"test:coverage": "pnpm --filter @saude-bliss/api test:coverage",
+		"test": "pnpm -r --filter './packages/*' --filter './apps/api/functions/*' --filter @saude-bliss/web test",
+		"test:api": "pnpm --filter @saude-bliss/api test",
+		"test:packages": "pnpm -r --filter './packages/*' test",
+		"test:coverage": "pnpm -r --filter './packages/*' --filter './apps/api/functions/*' --filter @saude-bliss/web test:coverage",
 		"test:e2e": "pnpm --filter @saude-bliss/automation test",
 		"test:e2e:ui": "pnpm --filter @saude-bliss/automation test:ui",
 		"test:e2e:report": "pnpm --filter @saude-bliss/automation report",
@@ -40,7 +42,8 @@
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"clean": "rm -rf apps/api/functions/*/dist apps/web/.next apps/automation/{reports,test-results} packages/*/coverage apps/api/functions/*/coverage",
-		"clean:all": "pnpm clean && rm -rf node_modules apps/*/node_modules apps/api/functions/*/node_modules packages/*/node_modules infra/terraform/.terraform"
+		"clean:all": "pnpm clean && rm -rf node_modules apps/*/node_modules apps/api/functions/*/node_modules packages/*/node_modules infra/terraform/.terraform",
+		"test:web": "pnpm --filter @saude-bliss/web test"
 	},
 	"devDependencies": {
 		"prettier": "^3.4.2",
@@ -48,7 +51,7 @@
 		"typescript": "^5.7.3"
 	},
 	"pnpm": {
-		"//": "esbuild precisa do postinstall para baixar o binário nativo da plataforma.",
+		"//": "esbuild precisa do postinstall para baixar o bin\u00e1rio nativo da plataforma.",
 		"onlyBuiltDependencies": [
 			"esbuild"
 		]
