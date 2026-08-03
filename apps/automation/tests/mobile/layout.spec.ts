@@ -115,9 +115,10 @@ test.describe("layout em tela estreita", () => {
 
 		// Com `overflow-hidden` as três últimas colunas — situação, ambiente e tempo
 		// de resposta — eram inalcançáveis justamente para quem abre esta tela do
-		// celular para saber o que caiu.
+		// celular para saber o que caiu. Rolar até o fim precisa trazê-las à vista.
 		await statusPage.table.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
-		await expect(statusPage.badge("bliss-requests")).toBeInViewport();
+
+		await expect(statusPage.row("bliss-requests").locator("td").last()).toBeInViewport();
 	});
 
 	test("o perfil abre num modal que cabe na tela", async ({ authenticated, shell, requestsListPage }) => {

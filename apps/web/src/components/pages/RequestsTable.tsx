@@ -44,7 +44,15 @@ export function RequestsTable({ items, renderAction }: Props) {
 						<th className="px-4 py-3">Prioridade</th>
 						<th className="px-4 py-3">Status</th>
 						<th className="px-4 py-3">Criada em</th>
-						{renderAction && <th className="px-4 py-3" />}
+						{/*
+						 * A coluna de ação fica **grudada** na borda direita.
+						 *
+						 * Em tela de celular a tabela tem o dobro da largura da viewport e
+						 * rola dentro da própria moldura — o que deixava "Revisar" e
+						 * "Rejeitar" fora da tela. A ação principal da fila de conferência
+						 * exigia descobrir que a tabela rola de lado antes de existir.
+						 */}
+						{renderAction && <th className="sticky right-0 bg-slate-50 px-4 py-3" />}
 					</tr>
 				</thead>
 				<tbody className="divide-y divide-slate-100">
@@ -71,7 +79,14 @@ export function RequestsTable({ items, renderAction }: Props) {
 							<td className="px-4 py-3 text-slate-500" data-testid="request-cell-createdAt">
 								{formatDateTime(request.createdAt)}
 							</td>
-							{renderAction && <td className="px-4 py-3 text-right">{renderAction(request)}</td>}
+							{renderAction && (
+								// `bg-white` e a borda à esquerda são o que faz a coluna grudada
+								// parecer sobreposta em vez de misturada ao conteúdo que passa
+								// por baixo dela durante a rolagem.
+								<td className="sticky right-0 border-l border-slate-100 bg-white px-4 py-3 text-right">
+									{renderAction(request)}
+								</td>
+							)}
 						</tr>
 					))}
 				</tbody>
