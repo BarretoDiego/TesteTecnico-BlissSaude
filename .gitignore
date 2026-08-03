@@ -36,6 +36,9 @@ terraform.rc
 # serverless
 .serverless/
 .serverless_plugins/
+# Cópias dos bundles com nome por serviço — o Serverless usa o nome do arquivo
+# como chave no S3, e os quatro `function.zip` colidiriam. Geradas no deploy.
+.artifacts/
 
 # os / editor
 .DS_Store

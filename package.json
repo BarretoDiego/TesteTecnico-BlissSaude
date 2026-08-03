@@ -18,6 +18,8 @@
 		"verify": "./scripts/verify-all.sh",
 		"verify:rapido": "./scripts/verify-all.sh --rapido",
 		"smoke": "./scripts/localstack/smoke.sh",
+		"deploy:sls": "./scripts/serverless/deploy.sh",
+		"deploy:sls:remove": "./scripts/serverless/deploy.sh --remover",
 		"evidence": "./scripts/evidence/capture.sh",
 		"infra:up": "docker compose up -d && ./scripts/localstack/wait-ready.sh",
 		"infra:down": "docker compose down",

@@ -32,8 +32,8 @@ conferência operacional** com Playwright — mais um backoffice que fecha o cic
 
 | Requisito do desafio                                 | Onde                                                |
 | ---------------------------------------------------- | --------------------------------------------------- |
-| Node.js + TypeScript + Serverless Framework          | `apps/api/functions/*/serverless.yml`               |
-| Deploy em API Gateway + Lambda                       | `infra/terraform/` + `scripts/localstack/deploy.sh` |
+| Node.js + TypeScript + Serverless Framework          | `apps/api/serverless.yml` — `pnpm deploy:sls`       |
+| Deploy em API Gateway + Lambda                       | duas trilhas — Terraform e Serverless ([ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md)) |
 | Persistência em RDS, com justificativa               | [ADR 0004](docs/adr/0004-rds-e-pool-de-conexoes.md) |
 | Logs no CloudWatch e rastreabilidade por `requestId` | [ADR 0003](docs/adr/0003-requestid-traceability.md) |
 | `POST /requests` com validação, retornando 201       | `bliss-requests`                                    |
@@ -114,8 +114,8 @@ Detalhes em [`CLAUDE.md`](CLAUDE.md) e [ADR 0001](docs/adr/0001-microservicos-po
 | Validação | Zod + `zod-to-json-schema`          | um schema alimenta validação e Swagger                                                        |
 | Banco     | PostgreSQL + Drizzle ORM            | SQL-first, bundle mínimo em Lambda                                                            |
 | Build     | esbuild → `function.zip`            | Terraform e `sls` consomem o mesmo artefato                                                   |
-| IaC       | Terraform                           | única coisa que cria recurso — [ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md) |
-| Emulação  | Serverless Framework 3 + LocalStack | v4 exigiria conta e travaria o deploy offline                                                 |
+| IaC       | Terraform **e** Serverless Framework | duas trilhas de deploy completas, em stages separados — [ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md) |
+| Emulação  | LocalStack v3                       | Serverless fixado na v3: a v4 exige conta e travaria o deploy offline                        |
 | Auth      | JWT HS256 (`jose`) + `scrypt`       | [ADR 0005](docs/adr/0005-autenticacao-e-autorizacao.md)                                       |
 | Frontend  | Next.js 16 App Router + Tailwind 4  | padrão da casa                                                                                |
 | E2E       | Playwright                          | Page Objects, oráculo de API, relatório CSV                                                   |
@@ -422,20 +422,66 @@ Mecanismo completo em [ADR 0003](docs/adr/0003-requestid-traceability.md).
 
 ## 📦 Deploy
 
-**Terraform provisiona; Serverless Framework emula e empacota.** Os dois consomem o
+**Duas trilhas completas, cada uma capaz de subir o sistema inteiro sozinha.**
+Em stages separados, então coexistem sem disputar recurso. As duas consomem o
 mesmo `dist/function.zip`. Ver [ADR 0002](docs/adr/0002-serverless-framework-vs-terraform.md).
 
-### LocalStack
+|            | Terraform             | Serverless Framework      |
+| ---------- | --------------------- | ------------------------- |
+| Comando    | `pnpm deploy:local`   | `pnpm deploy:sls`         |
+| Stage      | `local`               | `sls`                     |
+| Estado     | arquivo de state      | stack de CloudFormation   |
+| Declaração | `infra/terraform/`    | `apps/api/serverless.yml` |
+| Topologia  | uma API, 4 Lambdas    | idêntica                  |
+
+Subir as duas e ver as duas URLs respondendo:
+
+```bash
+pnpm deploy:local   # Terraform  → stage local
+pnpm deploy:sls     # Serverless → stage sls
+pnpm urls           # imprime as duas
+```
+
+O mesmo smoke — 17 asserções — roda contra qualquer uma delas; o alvo é resolvido
+por variável de ambiente.
+
+> **Não aponte as duas para o mesmo stage.** Cada uma mantém o próprio estado, e
+> dois donos do mesmo recurso produzem drift e remoção acidental. Stages
+> separados é o que torna a coexistência segura.
+
+### Terraform
 
 ```bash
 pnpm deploy:local
 ```
 
-O script executa, em ordem: aguarda a infraestrutura → empacota com esbuild →
-**verifica paridade de rotas** → `terraform apply` → migrations e seed → smoke test.
+Executa, em ordem: aguarda a infraestrutura → empacota com esbuild → **verifica
+paridade de rotas** → `terraform apply` → migrations e seed → smoke test.
 
 O build vem antes do Terraform porque ele lê o zip por `filebase64sha256` — invertê-los
 publica o artefato da execução anterior.
+
+### Serverless Framework
+
+```bash
+pnpm deploy:sls              # deploy + migrations + smoke
+pnpm deploy:sls:remove       # derruba o stack
+```
+
+Provisiona as quatro Lambdas atrás de **uma** API Gateway, mais os segredos que
+ela usa — sem depender de `terraform apply` antes.
+
+Três detalhes que o LocalStack impõe e que o script já trata: `versionFunctions:
+false` (o `PublishVersion` do emulador acusa divergência de `CodeSHA256` mesmo
+com artefato idêntico), remoção do stack direto pelo CloudFormation (o `sls
+remove` aborta no ECR, não implementado no Community), e cópia dos bundles para
+`.artifacts/<serviço>.zip` — o Serverless usa o **nome do arquivo** como chave no
+S3, e os quatro `function.zip` colidiriam, fazendo todas as funções rodarem o
+mesmo código.
+
+> Recriar um stack apagado não funciona no LocalStack: ele o deixa em
+> `REVIEW_IN_PROGRESS`. Reimplantar sobre um stack saudável funciona normalmente;
+> recomeçar do zero exige `pnpm reset`.
 
 > **Sem licença.** O LocalStack está fixado na **v3**: as imagens `latest` de 2026
 > exigem `LOCALSTACK_AUTH_TOKEN` mesmo para serviços gratuitos e abortam sem ele. A
@@ -595,7 +641,7 @@ de uma `db.t4g.micro`. Detalhes em [ADR 0004](docs/adr/0004-rds-e-pool-de-conexo
 
 | Decisão                              | Motivo                                                                        |
 | ------------------------------------ | ----------------------------------------------------------------------------- |
-| Serverless Framework **e** Terraform | o desafio exige o primeiro, o padrão do time usa o segundo — ADR 0002         |
+| Serverless Framework **e** Terraform | o desafio exige o primeiro, o padrão do time usa o segundo. Ambos implantam, em stages separados — ADR 0002 |
 | `serverless@3`                       | a v4 exige conta e travaria o deploy offline                                  |
 | LocalStack v3 fixado                 | as imagens de 2026 exigem token mesmo para serviços gratuitos                 |
 | `PATCH /reviews/{id}` além do escopo | a automação precisa de ação de escrita para ser fluxo, não roteiro de cliques |

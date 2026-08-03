@@ -23,10 +23,18 @@ item() { printf '  %-22s \033[0;36m%s\033[0m\n' "$1" "$2"; }
 
 API_BASE_URL="$(terraform -chdir=infra/terraform output -raw api_base_url 2>/dev/null || true)"
 
+# A trilha do Serverless Framework, quando implantada, aparece ao lado da do
+# Terraform: as duas coexistem em stages diferentes, e ver as duas URLs juntas é
+# o que torna a coexistência verificável em vez de afirmada.
+SLS_BASE_URL="$(cd apps/api 2>/dev/null &&
+	AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test npx --no-install serverless info --stage "${SLS_STAGE:-sls}" --verbose 2>/dev/null |
+	sed -n 's/^[[:space:]]*ApiBaseUrl:[[:space:]]*//p' | tail -1)"
+
 titulo "Sistema"
-if [ -n "$API_BASE_URL" ]; then
+if [ -n "$API_BASE_URL" ] || [ -n "$SLS_BASE_URL" ]; then
 	item "Backoffice" "http://localhost:${WEB_PORT}"
-	item "API (gateway)" "$API_BASE_URL"
+	[ -n "$API_BASE_URL" ] && item "API — Terraform" "$API_BASE_URL"
+	[ -n "$SLS_BASE_URL" ] && item "API — Serverless" "$SLS_BASE_URL"
 else
 	printf '  \033[0;33m!\033[0m nada provisionado ainda — rode \033[0;36mpnpm start\033[0m\n'
 	exit 0

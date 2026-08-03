@@ -57,6 +57,12 @@ importers:
       esbuild:
         specifier: ^0.24.2
         version: 0.24.2
+      serverless:
+        specifier: 3.40.0
+        version: 3.40.0(@types/node@22.20.1)
+      serverless-localstack:
+        specifier: ^1.4.0
+        version: 1.4.0
       ts-node:
         specifier: ^10.9.2
         version: 10.9.2(@types/node@22.20.1)(typescript@5.9.3)
@@ -3318,6 +3324,9 @@ packages:
   es6-iterator@2.0.3:
     resolution: {integrity: sha512-zw4SRzoUkd+cl+ZoE15A9o1oQd920Bb0iOJMQkQhl3jNc03YqVjAhG7scf9C5KWRU/R13Orf588uCC6525o02g==}
 
+  es6-promisify@6.1.1:
+    resolution: {integrity: sha512-HBL8I3mIki5C1Cc9QjKUenHtnG0A5/xA8Q/AllRcfiwl2CZFXGK7ddBiCoRwAix4i2KxcQfjtIVcrVbB3vbmwg==}
+
   es6-set@0.1.6:
     resolution: {integrity: sha512-TE3LgGLDIBX332jq3ypv6bcOpkLO0AslAQo7p2VqX/1N46YNsvIWgvjojjSEnWEGWMhr1qUbYeTSir5J6mFHOw==}
     engines: {node: '>=0.12'}
@@ -5400,6 +5409,9 @@ packages:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
+
+  serverless-localstack@1.4.0:
+    resolution: {integrity: sha512-tBAcD24vuue97xFGsXvDYWNdEazLmfUYy9Po3g8G+U6RNZ/0NamfkwN0TIq/bHf/VFmCCKH3b59/JxdlxkHgLg==}
 
   serverless-offline@13.10.0:
     resolution: {integrity: sha512-TchZKgG9bLos347h4lHbuXgVLoODxx5mafcCTDT3CGWWcbv0k92L7/xoMTMCCvWGzeOC+7DMcXxJ0vSGbMjT7w==}
@@ -9148,6 +9160,8 @@ snapshots:
       es5-ext: 0.10.64
       es6-symbol: 3.1.4
 
+  es6-promisify@6.1.1: {}
+
   es6-set@0.1.6:
     dependencies:
       d: 1.0.2
@@ -11591,6 +11605,12 @@ snapshots:
   semver@6.3.1: {}
 
   semver@7.8.5: {}
+
+  serverless-localstack@1.4.0:
+    dependencies:
+      adm-zip: 0.5.18
+      aws-sdk: 2.1693.0
+      es6-promisify: 6.1.1
 
   serverless-offline@13.10.0(serverless@3.40.0(@types/node@22.20.1)):
     dependencies:

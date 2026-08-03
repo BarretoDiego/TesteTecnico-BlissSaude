@@ -22,9 +22,13 @@ fail() {
 	exit 1
 }
 
-FN="$(terraform -chdir="$TF_DIR" output -json lambda_functions | python3 -c 'import sys,json;print(json.load(sys.stdin)["bliss-authorizer"])')"
-API="$(terraform -chdir="$TF_DIR" output -raw api_id)"
-ARN="arn:aws:execute-api:us-east-1:000000000000:${API}/local/GET/v1/requests"
+# Alvo parametrizável: as duas trilhas de deploy nomeiam a função de formas
+# diferentes. Sem override, resolve pelos outputs do Terraform — o caminho
+# padrão, inalterado. A trilha do Serverless Framework passa os valores dela.
+FN="${AUTHORIZER_FUNCTION:-$(terraform -chdir="$TF_DIR" output -json lambda_functions |
+	python3 -c 'import sys,json;print(json.load(sys.stdin)["bliss-authorizer"])')}"
+API="${API_ID:-$(terraform -chdir="$TF_DIR" output -raw api_id)}"
+ARN="arn:aws:execute-api:us-east-1:000000000000:${API}/${API_STAGE:-local}/GET/v1/requests"
 
 invoke() { # <header Authorization> → efeito da política
 	local payload

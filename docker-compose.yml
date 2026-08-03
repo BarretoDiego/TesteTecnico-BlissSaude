@@ -35,7 +35,11 @@ services:
       # abortar com "License activation failed" mesmo na imagem Community.
       # Acrescente `rds` aqui junto com a imagem `-pro` e o token para exercitar
       # o RDS emulado.
-      SERVICES: ${LOCALSTACK_SERVICES:-apigateway,lambda,secretsmanager,iam,logs,cloudwatch,sts,s3,events,sqs}
+      #
+      # `cloudformation` entra pela trilha do Serverless Framework: `sls deploy`
+      # sobe um stack, e sem o serviço habilitado o deploy morre logo na primeira
+      # chamada. É Community, ao contrário do `rds` — não exige licença.
+      SERVICES: ${LOCALSTACK_SERVICES:-apigateway,lambda,secretsmanager,iam,logs,cloudwatch,sts,s3,events,sqs,cloudformation}
       DEBUG: ${LOCALSTACK_DEBUG:-0}
       # As Lambdas rodam em containers próprios; anexá-las a esta rede é o que
       # permite resolver `postgres` e o endpoint do RDS por nome.

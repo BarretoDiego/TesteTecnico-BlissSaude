@@ -1,0 +1,236 @@
+# =============================================================================
+# Trilha de deploy do Serverless Framework.
+#
+# Provisiona a API inteira — as quatro Lambdas atrás de **uma** API Gateway —
+# como alternativa ao Terraform, e não como complemento dele.
+#
+# ## Por que existe um arquivo agregado, e não quatro
+#
+# Cada `functions/*/serverless.yml` é um serviço próprio do Serverless Framework,
+# e cada serviço cria a **própria** API Gateway. Quatro serviços dariam quatro
+# URLs base, e o backoffice consome uma. Este arquivo reproduz a topologia do
+# Terraform — uma API, um prefixo por domínio — para que as duas trilhas
+# entreguem exatamente o mesmo sistema, no mesmo formato de URL.
+#
+# Os arquivos por serviço continuam existindo, com o papel que sempre tiveram:
+# `sls offline` (emulação de um domínio isolado) e `sls package`.
+#
+# ## Convivência com o Terraform
+#
+# Stage próprio (`sls` por padrão, contra `local` do Terraform). Os nomes de
+# recurso levam o stage, então os dois deploys coexistem na mesma conta sem
+# disputar nada — é o que permite subir os dois e comparar lado a lado.
+#
+# **Não** se deve apontar as duas trilhas para o mesmo stage. Cada uma mantém o
+# próprio estado (CloudFormation aqui, arquivo de state no Terraform), e dois
+# donos do mesmo recurso produzem drift e remoção acidental. Ver ADR 0002.
+# =============================================================================
+
+service: saude-bliss-api
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: ${env:SLS_LAMBDA_RUNTIME, 'nodejs20.x'}
+  region: ${env:AWS_REGION, 'us-east-1'}
+  # `sls` e não `local`: é o que separa esta trilha do deploy do Terraform.
+  stage: ${opt:stage, 'sls'}
+  memorySize: 512
+  timeout: 29 # teto do API Gateway REST; adiantar o corte evita 504 opaco
+  logRetentionInDays: 1
+  architecture: x86_64
+
+  # Sem versão publicada por deploy.
+  #
+  # O padrão do Serverless cria um `AWS::Lambda::Version` a cada deploy, e o
+  # LocalStack falha ali: o `PublishVersion` compara o CodeSHA256 do zip com o
+  # do `$LATEST` e acusa divergência mesmo sendo o mesmo artefato. Versão só
+  # serve para alias e rollback ponderado, que este projeto não usa — e o
+  # Terraform também não as cria, então desligar aproxima as duas trilhas.
+  versionFunctions: false
+
+  environment:
+    BLISS_ENV: ${self:provider.stage}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'debug'}
+    API_PREFIX: ${self:custom.apiPrefix}
+    DB_SECRET_ID: !Ref DatabaseSecret
+    JWT_SECRET_ID: !Ref JwtSecret
+    DB_POOL_MAX: ${env:DB_POOL_MAX, '1'}
+    DB_SSL: "false"
+    # Endpoint **interno**: quem lê é a Lambda, de dentro da rede do compose.
+    # `localhost` aqui apontaria para o próprio container da função.
+    AWS_ENDPOINT_URL: ${env:LOCALSTACK_INTERNAL_ENDPOINT, 'http://saude-bliss-localstack:4566'}
+
+  iam:
+    role:
+      statements:
+        # Só os dois segredos deste stack, e só leitura. A role que o Serverless
+        # gera sozinho não inclui Secrets Manager — sem isto a função sobe e
+        # falha na primeira consulta ao banco, com erro de permissão que não
+        # menciona qual recurso faltou.
+        - Effect: Allow
+          Action: [secretsmanager:GetSecretValue]
+          Resource:
+            - !Ref DatabaseSecret
+            - !Ref JwtSecret
+
+package:
+  # Um artefato por função: cada microserviço tem o próprio bundle, produzido
+  # pelo esbuild. É o mesmo zip que o Terraform publica — sem segundo bundler,
+  # o que roda aqui é byte a byte o que roda lá.
+  individually: true
+
+functions:
+  requests:
+    name: ${self:service}-${self:provider.stage}-requests
+    handler: app.lambdaHandler
+    description: Solicitações — abertura e consulta
+    package:
+      artifact: .artifacts/bliss-requests.zip
+    environment:
+      SERVICE_NAME: bliss-requests
+    events:
+      # Uma rota greedy por domínio. O prefixo é o que permite ao API Gateway
+      # encaminhar tudo para a função certa sem uma regra por método — o
+      # despacho fino é do Fastify, que já tem a tabela de rotas.
+      - http:
+          path: ${self:custom.apiPrefix}/requests
+          method: any
+          cors: true
+      - http:
+          path: ${self:custom.apiPrefix}/requests/{proxy+}
+          method: any
+          cors: true
+
+  reviews:
+    name: ${self:service}-${self:provider.stage}-reviews
+    handler: app.lambdaHandler
+    description: Conferência operacional e trilha de auditoria
+    package:
+      artifact: .artifacts/bliss-reviews.zip
+    environment:
+      SERVICE_NAME: bliss-reviews
+    events:
+      - http:
+          path: ${self:custom.apiPrefix}/reviews
+          method: any
+          cors: true
+      - http:
+          path: ${self:custom.apiPrefix}/reviews/{proxy+}
+          method: any
+          cors: true
+
+  auth:
+    name: ${self:service}-${self:provider.stage}-auth
+    handler: app.lambdaHandler
+    description: Autenticação — emissão e rotação de tokens
+    package:
+      artifact: .artifacts/bliss-auth.zip
+    # Mais memória: `scrypt` com N=32768 exige ~33MB só para a derivação, e
+    # memória em Lambda também compra CPU — o que encurta o login.
+    memorySize: 1024
+    timeout: 15
+    environment:
+      SERVICE_NAME: bliss-auth
+    events:
+      - http:
+          path: ${self:custom.apiPrefix}/auth
+          method: any
+          cors: true
+      - http:
+          path: ${self:custom.apiPrefix}/auth/{proxy+}
+          method: any
+          cors: true
+
+  authorizer:
+    name: ${self:service}-${self:provider.stage}-authorizer
+    handler: app.lambdaHandler
+    description: Authorizer do API Gateway — valida o token das demais rotas
+    package:
+      artifact: .artifacts/bliss-authorizer.zip
+    memorySize: 256
+    timeout: 10
+    environment:
+      SERVICE_NAME: bliss-authorizer
+    # Sem `events`: não é chamada por rota. O API Gateway a invoca antes de
+    # encaminhar, e é declarada como authorizer no bloco `resources`.
+
+custom:
+  apiPrefix: ${env:API_PREFIX, '/v1'}
+
+  localstack:
+    # Só neste stage. Rodar contra AWS real é `--stage dev` com credencial real,
+    # e aí o plugin sai do caminho.
+    stages: [sls]
+    host: ${env:LOCALSTACK_HOST, 'http://localhost'}
+    edgePort: ${env:LOCALSTACK_PORT, '4568'}
+    autostart: false
+
+plugins:
+  - serverless-localstack
+
+resources:
+  Resources:
+    # -------------------------------------------------------------------------
+    # Segredos
+    #
+    # Criados aqui, e não reaproveitados do Terraform: a trilha precisa subir
+    # sozinha, do zero, sem `terraform apply` antes. O formato do JSON é o que
+    # `SecretsService.getDatabaseUrl` desserializa — mudar um campo aqui quebra
+    # a resolução da credencial em runtime.
+    # -------------------------------------------------------------------------
+    DatabaseSecret:
+      Type: AWS::SecretsManager::Secret
+      Properties:
+        Name: /${self:provider.stage}/saude-bliss/database/credentials
+        Description: Credencial do Postgres para a trilha do Serverless Framework
+        SecretString: '{"username":"${env:POSTGRES_USER, ''saudebliss''}","password":"${env:POSTGRES_PASSWORD, ''saudebliss''}","host":"${env:SLS_DB_HOST, ''postgres''}","port":5432,"dbname":"${env:POSTGRES_DB, ''saudebliss''}"}'
+
+    JwtSecret:
+      Type: AWS::SecretsManager::Secret
+      Properties:
+        Name: /${self:provider.stage}/saude-bliss/auth/jwt
+        Description: Chave de assinatura dos tokens
+        SecretString: '{"signingKey":"${env:JWT_SECRET, ''chave-de-desenvolvimento-local-nao-usar-em-producao''}"}'
+
+    # -------------------------------------------------------------------------
+    # Authorizer
+    #
+    # Tipo REQUEST, como no Terraform: precisa enxergar o header `Authorization`,
+    # e o tipo TOKEN só aceita um header fixo com formato de token.
+    #
+    # As rotas de negócio **não** o referenciam neste arquivo. O Serverless não
+    # permite authorizer em rota `ANY` com proxy greedy sem quebrar o roteamento
+    # do Fastify, e o LocalStack Community não executa authorizer de qualquer
+    # forma. A validação real acontece: `bliss-auth` valida o token quando o
+    # contexto do authorizer não chega — ver AuthController.me. O recurso fica
+    # declarado para que a paridade com o Terraform seja verificável.
+    # -------------------------------------------------------------------------
+    ApiGatewayAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: ${self:service}-${self:provider.stage}-authorizer
+        RestApiId: !Ref ApiGatewayRestApi
+        Type: REQUEST
+        IdentitySource: method.request.header.Authorization
+        AuthorizerResultTtlInSeconds: ${env:AUTHORIZER_CACHE_TTL, '60'}
+        AuthorizerUri: !Join
+          - ""
+          - - "arn:aws:apigateway:"
+            - ${self:provider.region}
+            - ":lambda:path/2015-03-31/functions/"
+            - !GetAtt AuthorizerLambdaFunction.Arn
+            - "/invocations"
+
+  Outputs:
+    ApiBaseUrl:
+      Description: URL base da API implantada por esta trilha
+      Value: !Join
+        - ""
+        - - ${env:LOCALSTACK_HOST, 'http://localhost'}
+          - ":"
+          - ${env:LOCALSTACK_PORT, '4568'}
+          - "/restapis/"
+          - !Ref ApiGatewayRestApi
+          - "/${self:provider.stage}/_user_request_"
+          - ${self:custom.apiPrefix}
