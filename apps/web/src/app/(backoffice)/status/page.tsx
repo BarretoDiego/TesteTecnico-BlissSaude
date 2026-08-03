@@ -140,18 +140,31 @@ export default function StatusPage() {
 				</h2>
 
 				{identity?.user ? (
+					/*
+					 * `min-w-0` e `break-words` nas células, como no detalhe: item de grid
+					 * nasce com `min-width: auto`, e um e-mail — que não tem onde quebrar —
+					 * transborda a coluna. O texto não aumenta a caixa, então nada parece
+					 * fora do lugar: o que aparece é a página inteira ganhando rolagem
+					 * horizontal, sete pixels a mais que a largura da tela.
+					 */
 					<dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-						<div>
+						<div className="min-w-0">
 							<dt className="text-xs text-slate-500">Nome</dt>
-							<dd data-testid="identidade-nome">{identity.user.name}</dd>
+							<dd className="break-words" data-testid="identidade-nome">
+								{identity.user.name}
+							</dd>
 						</div>
-						<div>
+						<div className="min-w-0">
 							<dt className="text-xs text-slate-500">E-mail</dt>
-							<dd data-testid="identidade-email">{identity.user.email}</dd>
+							<dd className="break-words" data-testid="identidade-email">
+								{identity.user.email}
+							</dd>
 						</div>
-						<div>
+						<div className="min-w-0">
 							<dt className="text-xs text-slate-500">Perfis</dt>
-							<dd data-testid="identidade-perfis">{identity.user.roles.join(", ")}</dd>
+							<dd className="break-words" data-testid="identidade-perfis">
+								{identity.user.roles.join(", ")}
+							</dd>
 						</div>
 					</dl>
 				) : (

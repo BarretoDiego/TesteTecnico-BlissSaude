@@ -40,21 +40,41 @@ export async function medirTransbordoHorizontal(page: Page): Promise<OverflowRep
 			return false;
 		};
 
-		const offenders: string[] = [];
+		const culpados: Array<{ element: Element; descricao: string }> = [];
 		for (const element of Array.from(document.body.querySelectorAll("*"))) {
 			const rect = element.getBoundingClientRect();
 			if (rect.width === 0 || rect.height === 0) continue;
-			// 1px de folga: arredondamento de subpixel em fator de escala fracionário
-			// produz 393.33 contra 393 sem que nada esteja de fato fora da tela.
-			if (rect.right <= limite + 1 && rect.left >= -1) continue;
 			if (temRolagemPropria(element)) continue;
 
+			// Dois sintomas, e o segundo é o que custa a achar. O primeiro é a caixa
+			// passar da borda. O segundo é o conteúdo transbordar uma caixa que cabe:
+			// um e-mail ou UUID sem ponto de quebra estica o `scrollWidth` sem mexer
+			// no `getBoundingClientRect`, então nada aparece fora do lugar — só a
+			// página inteira ganha rolagem lateral.
+			//
+			// 1px de folga nos dois: arredondamento de subpixel em fator de escala
+			// fracionário produz 393.33 contra 393 sem nada estar de fato fora.
+			const caixaForaDaTela = rect.right > limite + 1 || rect.left < -1;
+			const conteudoTransbordando = element.scrollWidth > element.clientWidth + 1;
+			if (!caixaForaDaTela && !conteudoTransbordando) continue;
+
 			const testId = element.getAttribute("data-testid");
-			offenders.push(
-				`${element.tagName.toLowerCase()}${testId ? `[${testId}]` : ""} ` +
-					`left=${Math.round(rect.left)} right=${Math.round(rect.right)}`
-			);
+			culpados.push({
+				element,
+				descricao:
+					`${element.tagName.toLowerCase()}${testId ? `[${testId}]` : ""} ` +
+					(caixaForaDaTela
+						? `left=${Math.round(rect.left)} right=${Math.round(rect.right)}`
+						: `conteúdo de ${element.scrollWidth}px em caixa de ${element.clientWidth}px`),
+			});
 		}
+
+		// Só os mais profundos: o transbordo sobe por toda a cadeia de ancestrais, e
+		// listar `body → div → main → section` antes do `dd` que de fato não quebra
+		// enterra a informação útil no meio do ruído.
+		const offenders = culpados
+			.filter(({ element }) => !culpados.some((outro) => outro.element !== element && element.contains(outro.element)))
+			.map(({ descricao }) => descricao);
 
 		return { scrollWidth: doc.scrollWidth, clientWidth: limite, offenders: offenders.slice(0, 8) };
 	});
