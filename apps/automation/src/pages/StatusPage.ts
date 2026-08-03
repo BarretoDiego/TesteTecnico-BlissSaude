@@ -74,9 +74,4 @@ export class StatusPage extends BasePage {
 	async allUp(): Promise<boolean> {
 		return (await this.container.getAttribute("data-all-up")) === "true";
 	}
-
-	/** Horário da última verificação, para afirmar que uma nova de fato ocorreu. */
-	async checkedAt(): Promise<string> {
-		return (await this.container.locator("p").first().innerText()).trim();
-	}
 }

@@ -88,7 +88,12 @@ test.describe("detalhe da solicitação", () => {
 		);
 	});
 
-	test("voltar retorna para a listagem", async ({ authenticated, requestDetailPage, requestsListPage, seedRequests }) => {
+	test("voltar retorna para a listagem", async ({
+		authenticated,
+		requestDetailPage,
+		requestsListPage,
+		seedRequests,
+	}) => {
 		const [request] = await seedRequests({ count: 1 });
 
 		await requestDetailPage.goto(request!.id);

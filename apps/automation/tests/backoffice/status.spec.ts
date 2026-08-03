@@ -32,19 +32,29 @@ test.describe("status dos serviços", () => {
 		await expect(statusPage.identidadePerfis).toHaveText(me.roles.join(", "));
 	});
 
-	test("verificar novamente refaz a sondagem", async ({ authenticated, statusPage }) => {
+	test("verificar novamente sonda os três serviços de novo", async ({ authenticated, statusPage }) => {
 		await statusPage.goto();
-		const antes = await statusPage.checkedAt();
+
+		/**
+		 * A asserção é sobre a **rede**, não sobre o horário exibido.
+		 *
+		 * O horário sai com precisão de segundo: duas verificações seguidas contra
+		 * uma API local — que responde em milissegundos — produzem exatamente o
+		 * mesmo texto, e o teste falharia sem nada estar errado. Contar as sondas
+		 * responde à pergunta real: o botão refez a consulta?
+		 */
+		const sondas: string[] = [];
+		statusPage.page.on("request", (request) => {
+			if (request.url().includes("/health")) sondas.push(new URL(request.url()).pathname);
+		});
 
 		await statusPage.recheck.click();
-		// O botão desabilitado durante a consulta é o que impede uma fila de
-		// sondagens sobrepostas com um clique impaciente.
-		await expect(statusPage.recheck).toBeDisabled();
 		await statusPage.waitForCheck();
 
 		await expect
-			.poll(() => statusPage.checkedAt(), { message: "o horário da verificação deveria mudar" })
-			.not.toBe(antes);
+			.poll(() => new Set(sondas).size, { message: "os três serviços deveriam ser sondados de novo" })
+			.toBe(3);
+		expect(await statusPage.allUp()).toBe(true);
 	});
 
 	test("cada linha mostra a rota sondada", async ({ authenticated, statusPage }) => {

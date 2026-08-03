@@ -46,6 +46,40 @@ vez de divergir por serviço.
 O fluxo pelo browser fica fora dessa contagem: é a suíte Playwright em
 `apps/automation/`, que roda contra o sistema implantado (`pnpm test:e2e`).
 
+## A suíte de browser
+
+81 cenários em quatro _projects_, divididos por **o que** verificam — e não por
+onde rodam:
+
+| Pasta                | Projects                         | O que exercita                                                                           |
+| -------------------- | -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `tests/smoke`        | desktop                          | o ambiente de pé: API responde, login carrega, credencial inválida é recusada            |
+| `tests/backoffice`   | desktop                          | navegação pelo menu, sessão (guarda de rota, recarga, logout) e perfil                   |
+| `tests/solicitacoes` | desktop                          | abertura, listagem com filtros e paginação **pelos controles**, detalhe e trilha         |
+| `tests/conferencia`  | desktop                          | a conferência diária, divergências e rastreabilidade por `requestId`                     |
+| `tests/mobile`       | `mobile-chrome`, `mobile-safari` | os fluxos críticos por toque, e a geometria: transbordo, alvo coberto, modal na viewport |
+
+A divisão é deliberada. Rodar a suíte inteira nos quatro projects reexecutaria
+regra de negócio — que não muda com a largura da tela — ao dobro do custo.
+`tests/mobile/` cobre a classe de defeito que **nenhuma** asserção de conteúdo
+enxerga: a tela renderiza, os dados estão certos, o fluxo passa, e mesmo assim o
+menu cobre o botão de perfil e a página rola de lado.
+
+Essas medições ficam em `src/support/layout.ts` — transbordo horizontal com o
+culpado nomeado na mensagem de falha, `elementFromPoint` para provar que o alvo
+recebe o toque, e a caixa do modal contra a viewport.
+
+Dois pontos que valem repetir por terem custado depuração:
+
+- **Esperar a consulta certa, não o fim do carregamento.** Ao navegar entre
+  filtros ou páginas, a tabela anterior segue na tela: `data-query` diz qual
+  consulta os dados exibidos representam. E a espera precisa vir **depois** da
+  URL mudar — no instante do clique os dois ainda batem, pela consulta antiga.
+- **Reenviar o login enquanto a tela ainda for a de login.** Um clique que chega
+  antes da hidratação encontra o botão pintado e sem handler; nada acontece e
+  nenhum erro aparece. Como todo teste passa pelo login, era falha intermitente
+  na suíte inteira.
+
 ## Convenções
 
 - Nome em **PT-BR** descrevendo comportamento: `it("retorna 404 quando a solicitação não existe")`.

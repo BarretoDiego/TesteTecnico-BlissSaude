@@ -1,7 +1,7 @@
 # Saúde Bliss — Gestão de Solicitações
 
 [![testes](https://img.shields.io/badge/testes-890%20passando-brightgreen)](#-testes)
-[![e2e](https://img.shields.io/badge/playwright-21%20cenários-brightgreen)](#-automação-da-conferência)
+[![e2e](https://img.shields.io/badge/playwright-81%20cenários%20·%20desktop%20e%20mobile-brightgreen)](#-automação-da-conferência)
 [![stack](https://img.shields.io/badge/stack-Node%2022%20·%20TypeScript%20·%20Fastify-blue)](#-stack)
 [![iac](https://img.shields.io/badge/iac-Terraform%20·%20Serverless%20Framework-844fba)](#-deploy)
 
@@ -246,7 +246,8 @@ do detalhe:
 | `pnpm verify`    | subida do zero, isolamento, auth real e deploy | Docker (derruba e sobe o volume) |
 
 ¹ `pnpm infra:up && pnpm db:migrate`. Sem banco a camada `e2e` falha — `SKIP_E2E=1` pula.
-² `pnpm --filter @saude-bliss/automation install:browsers`, uma vez por máquina.
+² `pnpm --filter @saude-bliss/automation install:browsers`, uma vez por máquina —
+instala Chromium e WebKit, este último para os cenários de iPhone.
 
 Quem quer só uma resposta de "está tudo de pé?": `pnpm start && pnpm verify:rapido`.
 
@@ -297,7 +298,7 @@ conferência, trilha de auditoria, e o `requestId` persistido.
 
 ```bash
 pnpm test        # 890 testes — unidade, integração, contrato e e2e
-pnpm test:e2e    # 21 cenários Playwright × headless e headed = 42 execuções
+pnpm test:e2e    # 81 cenários Playwright — 65 de fluxo × 2 modos + 16 móveis × 2 aparelhos
 pnpm typecheck   # sem erros de tipo em todo o monorepo
 ```
 
@@ -356,6 +357,11 @@ cobre todas as rotas publicadas.
 Todo elemento que a automação alcança tem `data-testid` estável, e os valores
 aparecem também em `data-*`. É o que permite ao Playwright comparar a tela com a
 API sem depender de texto traduzido nem de posição de coluna.
+
+**Em tela de celular** as seis telas continuam operáveis: nenhuma rola
+horizontalmente, as tabelas rolam dentro da própria moldura com a coluna de ação
+grudada na borda direita, e os modais cabem na viewport. Verificado a cada
+execução pelos cenários móveis — ver [Automação da conferência](#-automação-da-conferência).
 
 ---
 
@@ -685,23 +691,35 @@ vez por máquina. O `pnpm start` já grava `apps/automation/.env` com a URL da A
 a do backoffice.
 
 ```bash
-pnpm --filter @saude-bliss/automation install:browsers   # uma vez
-pnpm test:e2e                                            # os 21 cenários, headless e headed
+pnpm --filter @saude-bliss/automation install:browsers   # uma vez — Chromium e WebKit
+pnpm test:e2e                                            # os 81 cenários
 ```
 
 Ou de dentro do pacote, com mais controle:
 
 ```bash
 cd apps/automation
-pnpm test          # os dois projects — headless e headed
-pnpm test:headed   # só o headed, com UI e em câmera lenta
-pnpm test:ui       # modo interativo
-pnpm report        # abre o relatório HTML
+pnpm test           # os quatro projects
+pnpm test:desktop   # só o fluxo, headless — o que se roda no pipeline
+pnpm test:mobile    # só os móveis — Pixel 5 (Chromium) e iPhone 13 (WebKit)
+pnpm test:headed    # o fluxo com UI e em câmera lenta, para acompanhar na tela
+pnpm test:ui        # modo interativo
+pnpm report         # abre o relatório HTML
 ```
 
-**21 cenários** — smoke, filtros, paginação, conferência diária (incluindo o cancelamento
-da confirmação), rastreabilidade e divergências. Rodam contra qualquer uma das duas
-trilhas de deploy: o alvo é o `API_BASE_URL` do `.env`.
+**81 cenários** em quatro _projects_, duas famílias:
+
+| Família     | Projects                               | Cenários | O que cobre                                                                                                                                       |
+| ----------- | -------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **desktop** | `chromium-headless`, `chromium-headed` | 65       | smoke, login e sessão, navegação, abertura de solicitação, listagem (filtros e paginação), detalhe e trilha, conferência, status, rastreabilidade |
+| **mobile**  | `mobile-chrome`, `mobile-safari`       | 16       | os mesmos fluxos críticos por **toque**, mais o que só falha em tela estreita: transbordo horizontal, alvo coberto, modal maior que a viewport    |
+
+Rodam contra qualquer uma das duas trilhas de deploy: o alvo é o `API_BASE_URL` do `.env`.
+
+A suíte inteira não roda nos quatro projects de propósito. Metade do que ela
+verifica é regra de negócio, que não muda com a largura da tela — reexecutá-la em
+cada aparelho dobraria o tempo para repetir a mesma asserção. `tests/mobile/`
+existe para o que **só** aparece no celular.
 
 ### O que faz disso uma conferência
 
@@ -712,9 +730,24 @@ Sem essa comparação, os testes passariam com a tela exibindo dado errado.
 src/
 ├── api/ApiClient.ts        o oráculo — e semeia os dados de cada teste
 ├── pages/                  Page Objects
+├── support/layout.ts       medições de geometria: transbordo, alvo alcançável, modal na viewport
 ├── fixtures/test.ts        autenticação + seed com createdBy por execução
 └── reporters/CsvReporter.ts
 ```
+
+### O que os testes móveis pegaram
+
+Não são cenários hipotéticos — os cinco defeitos abaixo estavam no backoffice e
+foram corrigidos junto com a suíte. Todos passavam despercebidos porque a tela
+renderizava certo, os dados estavam certos e todo teste de fluxo passava:
+
+| Defeito                                                | Sintoma                                                                    | Correção                                            |
+| ------------------------------------------------------ | -------------------------------------------------------------------------- | --------------------------------------------------- |
+| cabeçalho com 517px de conteúdo em 393px de tela       | página rolava de lado e o menu cobria o botão de perfil, intocável ao dedo | marca e nome saem abaixo de `sm`; menu rola sozinho |
+| `<dialog>` com `w-full max-w-md` assumindo 448px fixos | o modal de confirmação saía pela borda do celular                          | largura por `calc(100vw-2rem)`                      |
+| tabela de status sob `overflow-hidden`                 | três colunas inalcançáveis — justamente na tela de "o que caiu?"           | `overflow-x-auto`                                   |
+| e-mail sem ponto de quebra em célula de grid           | 7px de rolagem lateral sem nenhum elemento visivelmente fora do lugar      | `min-w-0` + `break-words`                           |
+| ação da fila no fim de uma tabela de 900px             | "Revisar" e "Rejeitar" fora da tela na conferência                         | coluna de ação `sticky` na borda direita            |
 
 Cada teste semeia sob um `createdBy` próprio e filtra por ele — é o que torna
 retentativa segura e impede o resultado de ser função da ordem de execução.
